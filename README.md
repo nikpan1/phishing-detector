@@ -1,77 +1,72 @@
 # phishing-detector
 
-Trzy uruchomione notatniki przedstawiają lokalne metody detekcji phishingu
-na zbiorze `ealvaradob/phishing-dataset`, wariant `combined_reduced`:
+Lokalny filtr antyphishingowy oparty na **TF-IDF znakowych 3–5-gramów i liniowym SVM**.
+Gotowy model, skrypty i notebook znajdują się w [`src/`](src/README.md).
+Predykcja działa na CPU, bez internetu i API modeli.
 
-1. [Reguły i metryki](notebooks/01_reguly_i_metryki.ipynb): regex,
-   Levenshtein, Jaro–Winkler i Jaccard.
-2. [Clustering i unsupervised](notebooks/02_clustering_i_unsupervised.ipynb):
-   DBSCAN, HDBSCAN, K-Means na TF-IDF i embeddingach LSA, Isolation Forest,
-   symulacja nowej kampanii.
-3. [Statystyczny ML](notebooks/03_statystyczny_ml.ipynb): TF-IDF słowny
-   i znakowy, n-gramy, SVM, Naive Bayes i Random Forest (9 konfiguracji).
+**Wyniki na 15 351 próbkach testowych:**
 
-Każdy kończy się wspólną tabelą porównawczą swoich metod i omówieniem ograniczeń.
-Wyniki wykonania są zapisane w notatnikach oraz w [results](results/).
-Notatniki zawierają również diagramy przepływu, wykresy porównawcze i mapy
-wyników zapisane jako obrazy wewnątrz plików — są widoczne także na GitHubie.
+| Kryterium | Wynik |
+| --- | --- |
+| Czułość | **92,14%** |
+| FPR — fałszywe alarmy wśród legalnych próbek | **5,09%** |
+| Rozmiar modelu | **0,329 MiB** |
+| Predykcja | **0,921 ms/próbkę w batchu** |
 
-[Zwięzły raport porównawczy z wizualizacjami](docs/raport.md) podsumowuje
-wszystkie przeanalizowane metody, ich wyniki i ograniczenia.
+Czas obejmuje normalizację, TF-IDF i SVM, bez ładowania plików; rozmiar dotyczy
+skompresowanego modelu. Szczegóły: [raport testu](src/reports/test_metrics.json).
+
+## Kluczowe wizualizacje z raportu
+
+Poniższe wykresy porównują metody na próbie **8000 rekordów**. Tabela powyżej
+opisuje końcowy model trenowany na pełnym zbiorze po deduplikacji.
+
+**Reguły i podobieństwo tekstu:** regex, Levenshtein, Jaro–Winkler i Jaccard
+wykazują wysoki odsetek fałszywych alarmów.
+
+![Jakość reguł i metryk podobieństwa](docs/raport/diagramy/01-reguly-jakosc.png)
+
+**Clustering:** DBSCAN, HDBSCAN i K-Means grupują podobne próbki.
+Silhouette opisuje separację grup; klaster nie oznacza automatycznie phishingu.
+
+![Porównanie klasteryzacji](docs/raport/diagramy/02-klastry.png)
+
+**Statystyczny ML:** SVM z n-gramami znakowymi uzyskał najwyższe F1 w porównaniu
+z Naive Bayes i Random Forest. Na tej podstawie wybrano architekturę rozwiązania.
+
+![Porównanie klasyfikatorów i reprezentacji tekstu](docs/raport/diagramy/03-ml-jakosc.png)
+
+Pełne omówienie, koszty predykcji i wyniki Isolation Forest: [raport](docs/raport.md).
+
+## Architektura i działanie pipeline’u
+
+```mermaid
+flowchart LR
+    A["Tekst wiadomości / URL"] --> B["Normalizacja i limit 4000 znaków"]
+    B --> C["TF-IDF znakowe 3–5-gramy"]
+    C --> D["Liniowy SVM"]
+    D --> E["Próg z walidacji"]
+    E --> F["Benign / phishing"]
+```
+
+Normalizacja scala białe znaki i zamienia litery na małe. TF-IDF koduje tekst
+w maksymalnie 20 000 cech, a SVM oblicza margines decyzji — nie prawdopodobieństwo.
+Model ładowany jest raz; `predict.py` obsługuje pojedynczy tekst oraz batche JSONL/CSV.
+
+Trening używa wyłącznie części treningowej. Próg maksymalizuje czułość przy
+FPR ≤5% na walidacji; nie gwarantuje tego limitu na nowych danych. Losowy test
+mieszaniny URL, SMS, e-maili i HTML nie potwierdza odporności na Zero-Day.
 
 ## Uruchomienie
 
-Python 3.12, CPU, zalecane 8 GB RAM. Nie potrzeba GPU, kluczy API,
-zdalnych modeli ani serwisów. Sieć jest potrzebna tylko do instalacji pakietów.
-Pełny dataset jest w repozytorium: [opis i sumy kontrolne](data/README.md).
-
-Z katalogu głównego repozytorium:
+Python 3.12; komendy z katalogu głównego repozytorium:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python scripts/run_notebooks.py
+.venv/bin/python -m pip install -r src/requirements.txt
+.venv/bin/python src/predict.py --text "Meeting tomorrow at ten."
+.venv/bin/python src/evaluate.py --input src/examples/test.jsonl
 ```
 
-Skrypt uruchamia wszystkie komórki w tym samym interpreterze przez tymczasowy
-kernel Jupyter. Nie wymaga instalowania kernela globalnie. Zatrzymuje się przy
-błędzie i zapisuje wyniki tylko poprawnie ukończonego notatnika. Można wybrać jeden:
-
-```bash
-.venv/bin/python scripts/run_notebooks.py --notebook 02
-```
-
-Do edycji interaktywnej wybierz interpreter `.venv` w VS Code/Jupyter.
-Opcjonalnie zainstaluj JupyterLab w tym środowisku. Otwórz notatnik z katalogu
-`notebooks` albo z katalogu głównego repozytorium i wykonaj komórki od góry.
-Wszystkie obliczenia działają offline po instalacji zależności.
-
-## Jak interpretować wyniki
-
-Pełne dane: 77 677 rekordów, `0` benign / `1` phishing, mieszanina e-maili,
-SMS, URL i HTML. Eksperymenty korzystają ze stałej próby 8000 rekordów po
-deduplikacji pierwszych 4000 znaków, podzielonej warstwowo 60/20/20 z seed=42.
-`notebooks/common.py` sprawdza integralność całego zbioru i rozłączność podziałów.
-Zmienna `limit` w `load_splits` pozwala zwiększyć próbę; `None` wybiera całość,
-co znacznie zwiększy koszt DBSCAN/HDBSCAN i metryk odległości.
-
-Klasyfikatory są porównywane przez czułość phishingu, precision, F1, FPR,
-ROC-AUC, average precision, czas i rozmiar. Progi wybierane są na validation,
-a ocena końcowa na test. Czas oznacza medianę ms/próbkę w batchu (3 powtórzenia,
-po rozgrzewce), z transformacją tekstu i bez odczytu danych. `model_mib` to
-nieskompresowany pickle parametrów predykcji, bez runtime'u i całego datasetu.
-Nie zapisujemy plików modeli; tabele przedstawiają oszacowanie ich rozmiaru.
-Eksperymenty mają ustalone hiperparametry, nie są pełnym tuningiem ani CV.
-
-Klastry nie są klasyfikatorami: mają osobne metryki ARI/NMI/silhouette oraz
-udział szumu. HDBSCAN oceniany jest batchowo, pozostałe czasy predykcji zgodnie
-z opisem w tabeli. Isolation Forest oceniamy jako detektor anomalii, a nie
-automatyczne rozpoznanie phishingu. Embeddingi LSA uczą się lokalnie z TF-IDF.
-Symulacja kampanii nie dowodzi odporności na rzeczywisty Zero-Day. Brak dat
-i identyfikatorów kampanii uniemożliwia wiarygodną walidację czasową; bliskie
-duplikaty mogą zawyżać wyniki mimo usunięcia identycznych wejść.
-
-Nie odwiedzaj linków ani nie renderuj HTML zawartego w danych. Notatniki
-analizują tekst, wyświetlają jedynie agregaty i nie wykonują zawartości próbek.
-
-Dokumentacja zadania: [docs/zadanie/zadanie.md](docs/zadanie/zadanie.md).
+[Instrukcja pakietu i treningu](src/README.md) · [Notatniki porównawcze](notebooks/)
+· [Dane](data/README.md) · [Treść zadania](docs/zadanie/zadanie.md)
