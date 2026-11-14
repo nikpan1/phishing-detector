@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+from math import sqrt
 from time import perf_counter
 
 for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
@@ -102,6 +103,30 @@ def select_threshold(y, scores, max_fpr=0.05):
     return float(threshold)
 
 
+def select_threshold_for_recall(y, scores, min_recall=0.928):
+    """Minimize validation FPR at a predefined recall floor, including score ties."""
+    if not 0 < min_recall <= 1 or set(np.unique(y)) != {0, 1}:
+        raise ValueError('min_recall musi należeć do (0,1]; walidacja wymaga obu klas')
+    if not np.isfinite(scores).all():
+        raise ValueError('wyniki modelu muszą być skończone')
+    fpr, recall, thresholds = roc_curve(y, scores, drop_intermediate=False)
+    eligible = np.flatnonzero(recall >= min_recall - 1e-12)
+    chosen = min(eligible, key=lambda i: (fpr[i], -recall[i], -thresholds[i]))
+    return float(thresholds[chosen])
+
+
+def wilson_interval(successes, trials):
+    """95% Wilson interval; conditional on the supplied evaluation population."""
+    if not trials:
+        return None
+    z = 1.959963984540054
+    p = successes / trials
+    denominator = 1 + z*z / trials
+    center = (p + z*z / (2*trials)) / denominator
+    half = z * sqrt(p*(1-p)/trials + z*z/(4*trials*trials)) / denominator
+    return [max(0., center-half), min(1., center+half)]
+
+
 def metrics(y, scores, threshold):
     y = np.asarray(y)
     predictions = np.asarray(scores) >= threshold
@@ -116,6 +141,8 @@ def metrics(y, scores, threshold):
                 fpr=fp / (fp + tn) if fp + tn else None,
                 roc_auc=float(roc_auc_score(y, scores)) if both else None,
                 average_precision=float(average_precision_score(y, scores)) if tp + fn else None,
+                intervals_95={'recall': wilson_interval(tp, tp + fn),
+                              'fpr': wilson_interval(fp, fp + tn)},
                 confusion_matrix={'tn': tn, 'fp': fp, 'fn': fn, 'tp': tp})
 
 

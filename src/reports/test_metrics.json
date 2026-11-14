@@ -2,29 +2,39 @@
   "samples": 15351,
   "phishing_samples": 6390,
   "benign_samples": 8961,
-  "accuracy": 0.937593642108006,
-  "precision": 0.9281210592686002,
-  "recall": 0.9214397496087637,
-  "f1": 0.9247683367362965,
-  "fpr": 0.05088717777033813,
-  "roc_auc": 0.9827059930538855,
-  "average_precision": 0.9763608082171388,
-  "confusion_matrix": {
-    "tn": 8505,
-    "fp": 456,
-    "fn": 502,
-    "tp": 5888
+  "accuracy": 0.951468959676894,
+  "precision": 0.957085020242915,
+  "recall": 0.9248826291079812,
+  "f1": 0.940708316752885,
+  "fpr": 0.029572592344604395,
+  "roc_auc": 0.9888646663799084,
+  "average_precision": 0.9843212104487113,
+  "intervals_95": {
+    "recall": [
+      0.9181615997847903,
+      0.9310931142977716
+    ],
+    "fpr": [
+      0.026261647298888715,
+      0.033286696224290535
+    ]
   },
-  "threshold": 0.02570551450246883,
-  "model_bytes": 344471,
-  "model_mib": 0.32851314544677734,
-  "model_sha256": "64142a7e1544c91d2966784ad21a9cbdedb614f42d3cbfc70edbdb913c9b243b",
+  "confusion_matrix": {
+    "tn": 8696,
+    "fp": 265,
+    "fn": 480,
+    "tp": 5910
+  },
+  "threshold": 0.09610856078458119,
+  "model_bytes": 1599414,
+  "model_mib": 1.525320053100586,
+  "model_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82",
   "timing": {
     "batch_samples": 512,
     "repeats": 5,
-    "median_ms_per_sample": 0.9208021035158609,
+    "median_ms_per_sample": 1.2727660390625672,
     "includes": "normalization + TF-IDF + SVM; excludes file/model loading",
     "kind": "batch throughput, not single-request latency"
   },
-  "scope": "full held-out test; not used in fitting or threshold selection"
+  "scope": "same held-out test as baseline; not used in this optimization selection; not a new blind test"
 }

@@ -1,0 +1,56 @@
+"""Portable sklearn pipelines; no custom objects are needed in model artifacts."""
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import FeatureUnion, Pipeline
+from sklearn.svm import LinearSVC
+
+DEFAULT_CONFIG = dict(architecture='hybrid', max_features=60000, word_features=30000,
+                      svm_c=.25, classifier='svm')
+DEFAULT_RECALL = .928
+
+
+def vectorizer(analyzer, max_features):
+    return TfidfVectorizer(analyzer=analyzer,
+                          ngram_range=(3, 5) if analyzer == 'char' else (1, 2),
+                          lowercase=False, min_df=2, max_features=max_features,
+                          sublinear_tf=True, dtype=np.float32)
+
+
+def estimator(classifier='svm', svm_c=1., seed=42):
+    if classifier == 'svm':
+        return LinearSVC(C=svm_c, class_weight='balanced', max_iter=10000, random_state=seed)
+    if classifier == 'logistic':
+        return LogisticRegression(C=svm_c, class_weight='balanced', solver='liblinear',
+                                  max_iter=2000, random_state=seed)
+    raise ValueError('nieznany klasyfikator')
+
+
+def build_pipeline(architecture=DEFAULT_CONFIG['architecture'], max_features=DEFAULT_CONFIG['max_features'],
+                   word_features=DEFAULT_CONFIG['word_features'], svm_c=DEFAULT_CONFIG['svm_c'],
+                   classifier=DEFAULT_CONFIG['classifier'], seed=42):
+    if max_features < 1 or word_features < 1 or not np.isfinite(svm_c) or svm_c <= 0:
+        raise ValueError('liczby cech i C muszą być dodatnie')
+    char = vectorizer('char', max_features)
+    if architecture == 'char':
+        feature_step = ('tfidf', char)
+    elif architecture == 'hybrid':
+        feature_step = ('features', FeatureUnion([
+            ('char', char), ('word', vectorizer('word', word_features))], n_jobs=1))
+    else:
+        raise ValueError('nieznana architektura')
+    return Pipeline([feature_step, ('svm' if classifier == 'svm' else 'classifier',
+                                   estimator(classifier, svm_c, seed))])
+
+
+def feature_count(pipeline):
+    if 'features' in pipeline.named_steps:
+        return sum(len(transformer.vocabulary_)
+                   for _, transformer in pipeline['features'].transformer_list)
+    return len(pipeline['tfidf'].vocabulary_)
+
+
+def architecture_name(config):
+    features = 'char (3,5) + word (1,2)' if config['architecture'] == 'hybrid' else 'char (3,5)'
+    classifier = 'LinearSVC' if config['classifier'] == 'svm' else 'LogisticRegression'
+    return f'{features} TF-IDF + {classifier}'

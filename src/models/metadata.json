@@ -1,11 +1,18 @@
 {
   "format_version": 1,
-  "architecture": "char TF-IDF (3,5) + LinearSVC",
-  "threshold": 0.02570551450246883,
+  "architecture": "char (3,5) + word (1,2) TF-IDF + LinearSVC",
+  "configuration": {
+    "architecture": "hybrid",
+    "max_features": 60000,
+    "word_features": 30000,
+    "svm_c": 0.25,
+    "classifier": "svm"
+  },
+  "threshold": 0.09610856078458119,
   "threshold_policy": {
-    "objective": "maximum validation recall",
-    "max_validation_fpr": 0.05,
-    "tie_break": "lower FPR, then higher threshold"
+    "objective": "minimum validation FPR at recall floor",
+    "min_validation_recall": 0.928,
+    "tie_break": "higher recall, then higher threshold"
   },
   "split_info": {
     "source_sha256": "222fd5f841a0565841f8ede2e21b9b48cfea933a6b5c3a7da3e3a2cbc156d3d5",
@@ -41,24 +48,34 @@
     "samples": 15350,
     "phishing_samples": 6389,
     "benign_samples": 8961,
-    "accuracy": 0.9408469055374593,
-    "precision": 0.9300172603169622,
-    "recall": 0.9276882141180154,
-    "f1": 0.9288512772292744,
-    "fpr": 0.049771230889409664,
-    "roc_auc": 0.9834307826218094,
-    "average_precision": 0.9775982851271695,
+    "accuracy": 0.953615635179153,
+    "precision": 0.9584881279276369,
+    "recall": 0.9287838472374393,
+    "f1": 0.943402225755167,
+    "fpr": 0.028679834839861622,
+    "roc_auc": 0.9889380302592603,
+    "average_precision": 0.984609500917608,
+    "intervals_95": {
+      "recall": [
+        0.9222164708664568,
+        0.934835911128752
+      ],
+      "fpr": [
+        0.025420912832458366,
+        0.03234268077924786
+      ]
+    },
     "confusion_matrix": {
-      "tn": 8515,
-      "fp": 446,
-      "fn": 462,
-      "tp": 5927
+      "tn": 8704,
+      "fp": 257,
+      "fn": 455,
+      "tp": 5934
     }
   },
-  "features": 20000,
-  "fit_seconds": 106.93522592199997,
-  "model_bytes": 344471,
-  "model_sha256": "64142a7e1544c91d2966784ad21a9cbdedb614f42d3cbfc70edbdb913c9b243b",
+  "features": 90000,
+  "fit_seconds": 122.41962265000029,
+  "model_bytes": 1599414,
+  "model_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82",
   "versions": {
     "python": "3.12.14",
     "numpy": "2.3.5",

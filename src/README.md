@@ -1,6 +1,7 @@
 # Lokalny filtr antyphishingowy — pakiet rozwiązania
 
-**TF-IDF znakowych 3–5-gramów + liniowy SVM**, 20 000 cech, CPU, bez API modeli.
+**TF-IDF znakowych 3–5-gramów i słownych 1–2-gramów + liniowy SVM**, CPU, bez API modeli.
+Dwie reprezentacje (60 000 + 30 000 cech) łączymy przez FeatureUnion; SVM ma C=0,25.
 W katalogu znajduje się gotowy model: trening nie jest wymagany do predykcji.
 Można skopiować samo `src/` i uruchomić rozwiązanie offline po instalacji pakietów.
 
@@ -8,11 +9,11 @@ Można skopiować samo `src/` i uruchomić rozwiązanie offline po instalacji pa
 
 | Kryterium | Wynik |
 | --- | --- |
-| Rozmiar gotowego modelu | **344 471 B / 0,329 MiB** (skompresowany joblib) |
-| Czas normalizacji i predykcji | **0,921 ms/próbkę w batchu** |
-| Czułość phishingu | **92,14%** |
-| Precision / F1 | **92,81% / 0,925** |
-| FPR — fałszywe alarmy wśród benign | **5,09%** |
+| Rozmiar gotowego modelu | **1 599 414 B / 1,525 MiB** (skompresowany joblib) |
+| Czas normalizacji i predykcji | **1,273 ms/próbkę w batchu** |
+| Czułość phishingu | **92,49%** |
+| Precision / F1 | **95,71% / 0,941** |
+| FPR — fałszywe alarmy wśród benign | **2,96%** |
 | Odłożony test | **15 351 próbek**, w tym 6390 phishing |
 
 Źródło liczb: [reports/test_metrics.json](reports/test_metrics.json). Czas to mediana
@@ -27,6 +28,8 @@ z wcześniejszymi notatnikami na próbie 8000 rekordów i rozmiarem pickle bez k
 ```text
 src/
   core.py                       wspólna normalizacja, inferencja, metryki
+  modeling.py                   wspólne konfiguracje reprezentacji i klasyfikatorów
+  optimize.py                   wybór spośród 8 kandydatów na walidacji
   data.py                       integralność danych, deduplikacja i podział
   train.py                      odtworzenie modelu i progu
   predict.py                    tekst / batch JSONL lub CSV → JSONL
@@ -83,7 +86,7 @@ bez słów-kluczy jest nadal klasyfikowana przez model, a nie odrzucana.
 Potrzebne są lokalne części oryginalnego datasetu i `manifest.json` w `../data/`
 (opis źródła, etykiet i licencji: [data/README.md](../data/README.md)).
 Nie są potrzebne do predykcji i oceny dołączonych próbek. Zalecane 8 GB RAM.
-Pełny trening trwał około 107 s w tej maszynie, poza przygotowaniem danych i oceną.
+Pełny trening wybranej konfiguracji trwał około 122 s w tej maszynie, poza przygotowaniem danych i oceną.
 
 ```bash
 # Osobny katalog chroni dostarczony model przed nadpisaniem.
@@ -97,7 +100,10 @@ Pełny trening trwał około 107 s w tej maszynie, poza przygotowaniem danych i 
 
 Bez `--output-dir` trening zapisuje model i raporty w katalogu pakietu.
 `--limit 8000` umożliwia mniejszy eksperyment (domyślnie `0` = całość).
-`--max-features`, `--max-chars`, `--max-fpr` i `--seed` zmieniają konfigurację.
+`--max-features`, `--word-features`, `--svm-c`, `--architecture`, `--classifier`,
+`--max-chars` i `--seed` zmieniają konfigurację. `--min-recall` (domyślnie 0.928)
+minimalizuje FPR przy zadanej czułości; alternatywne `--max-fpr` maksymalizuje
+czułość przy limicie FPR. Te dwie polityki są wzajemnie wykluczające.
 Zmiana tych parametrów oznacza nowy eksperyment i wymaga ponownej oceny.
 
 Protokół dostarczonego modelu:
@@ -108,11 +114,23 @@ Protokół dostarczonego modelu:
 3. Z 77 677 rekordów pozostaje **76 752**: train **46 051**, validation **15 350**,
    test **15 351** (warstwowo, 60/20/20, seed=42). Podziały są rozłączne po
    SHA-256 znormalizowanego tekstu; ich skróty zapisano w metadanych.
-4. Słownik i IDF dopasowane tylko do train; SVM `C=1`, `class_weight=balanced`.
-5. Próg maksymalizuje czułość przy **FPR ≤5% na walidacji**, z rozstrzyganiem
-   remisów na rzecz niższego FPR. Walidacja: FPR **4,98%**, czułość **92,77%**.
-6. Zapisany model oceniono na odłożonym teście, bez ponownego doboru progu.
-   Limit walidacyjny **nie gwarantuje** identycznego FPR na teście lub nowych danych.
+4. Słowniki i IDF dopasowane tylko do train: char 3–5-gramy (60k), word 1–2-gramy
+   (30k), FeatureUnion; LinearSVC `C=0.25`, `class_weight=balanced`.
+5. Spośród ośmiu kandydatów wybrano minimum FPR przy z góry ustalonej czułości
+   ≥92,8% na walidacji. Wybrany model ma tam FPR **2,87%**, czułość **92,88%**.
+6. Próg i konfiguracja są zamrożone przed oceną testu. Czułość walidacyjna nie
+   gwarantuje identycznej czułości na teście ani na przyszłych danych.
+
+W porównaniu z pierwotnym modelem FPR zmalał **5,09% → 2,96%** (456 → 265 FP),
+a czułość wzrosła **92,14% → 92,49%**, kosztem większego modelu i czasu predykcji.
+[Raport usprawnienia](reports/optimization.md) zawiera pełną tabelę kandydatów,
+porównanie błędów i przedziały niepewności. [Baseline](reports/baseline.json)
+zachowuje metadane i wyniki oryginału. `optimize.py` pozwala odtworzyć eksperyment
+na train/validation, bez oceny testu w trakcie wyszukiwania:
+
+```bash
+.venv/bin/python optimize.py --output-dir experiments/optimization-new
+```
 
 Dołączone 200 przykładów to warstwowa próbka z tego samego testu; nie jest nowym
 niezależnym zbiorem. `evaluate.py --data-dir` odtwarza podział zapisany w modelu
@@ -131,10 +149,12 @@ pełny wynik odczytuje z raportu treningu. Przełącznik `RETRAIN=True` uruchami
 rzeczywisty trening z pełnymi danymi do osobnego katalogu `experiments/`.
 Testy obejmują Unicode/limit długości, remisy progów, budżet FPR walidacji,
 JSONL/CSV, zgodność predykcji pojedynczych i batchowych oraz dołączony artefakt.
-Weryfikacja dostarczonego pakietu: 10 testów zakończonych poprawnie, wykonany
+Weryfikacja dostarczonego pakietu: 14 testów zakończonych poprawnie, wykonany
 notebook i odtworzony pełny test z identyczną macierzą pomyłek. Sam katalog
 `src/` sprawdzono także po skopiowaniu poza repozytorium, w czystym venv
 z zależnościami z `requirements.txt` i zablokowanymi połączeniami sieciowymi.
+Pełny retrening odtworzył także współczynniki i próg modelu
+([potwierdzenie](reports/reproducibility.json)).
 
 ## Ograniczenia
 
@@ -145,4 +165,4 @@ Wybór architektury opiera się na wcześniejszych eksperymentach na części te
 datasetu, więc test wewnętrzny nie zastępuje nowego, niezależnego zbioru.
 Brak dat i identyfikatorów kampanii nie pozwala potwierdzić odporności na Zero-Day.
 Model nie wykonuje ani nie renderuje zawartości próbek i nie odwiedza adresów.
-Przy FPR około 5% nadal wymagana jest ostrożna polityka blokowania wiadomości.
+Przy FPR około 3% nadal wymagana jest ostrożna polityka blokowania wiadomości.

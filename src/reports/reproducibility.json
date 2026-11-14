@@ -1,0 +1,21 @@
+{
+  "command": "python src/train.py --output-dir src/experiments/reproduced",
+  "configuration": {
+    "architecture": "hybrid",
+    "max_features": 60000,
+    "word_features": 30000,
+    "svm_c": 0.25,
+    "classifier": "svm"
+  },
+  "split_info_equal": true,
+  "test_confusion_matrix_equal": true,
+  "test_confusion_matrix": {
+    "tn": 8696,
+    "fp": 265,
+    "fn": 480,
+    "tp": 5910
+  },
+  "max_absolute_coefficient_difference": 0.0,
+  "absolute_threshold_difference": 0.0,
+  "note": "independent full retraining using shipped training script, same dataset and seed; timing may differ"
+}
