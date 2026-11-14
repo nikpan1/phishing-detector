@@ -16,6 +16,9 @@ Wyniki wykonania są zapisane w notatnikach oraz w [results](results/).
 Notatniki zawierają również diagramy przepływu, wykresy porównawcze i mapy
 wyników zapisane jako obrazy wewnątrz plików — są widoczne także na GitHubie.
 
+[Zwięzły raport porównawczy z wizualizacjami](docs/raport.md) podsumowuje
+wszystkie przeanalizowane metody, ich wyniki i ograniczenia.
+
 ## Uruchomienie
 
 Python 3.12, CPU, zalecane 8 GB RAM. Nie potrzeba GPU, kluczy API,
