@@ -1,0 +1,34 @@
+{
+  "source_url": "https://huggingface.co/datasets/ealvaradob/phishing-dataset/resolve/main/combined_reduced.json",
+  "source_revision": "55caf9af01ae498d68ff44886ff69a4b165eb54b",
+  "original_bytes": 521149713,
+  "original_sha256": "222fd5f841a0565841f8ede2e21b9b48cfea933a6b5c3a7da3e3a2cbc156d3d5",
+  "records": 77677,
+  "labels": {
+    "0": 44975,
+    "1": 32702
+  },
+  "compression": "gzip stream split into ordered 40 MiB parts; concatenate before decompressing",
+  "parts": [
+    {
+      "file": "combined_reduced.json.gz.part000",
+      "bytes": 41943040,
+      "sha256": "115f059dc95801f03288334d54d4f8db6bee5c7ac95184f87d8c2513d8b71ccd"
+    },
+    {
+      "file": "combined_reduced.json.gz.part001",
+      "bytes": 41943040,
+      "sha256": "a93b36199f2e04a7fdb3bf29af54c52e133e705903bb4c817cdc86ff23969e14"
+    },
+    {
+      "file": "combined_reduced.json.gz.part002",
+      "bytes": 41943040,
+      "sha256": "cae901f23368d8589c6edaf620738effb191c85564f7da01441a5211b4f05d23"
+    },
+    {
+      "file": "combined_reduced.json.gz.part003",
+      "bytes": 12153417,
+      "sha256": "051ba2575ad7a50c8d12a2ab6f3927d478c625fb02ce0339ef42810004de5704"
+    }
+  ]
+}
