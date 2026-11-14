@@ -6,8 +6,8 @@ import sys
 from time import perf_counter
 import warnings
 
-from core import HERE, metrics, score_batches, select_threshold_for_recall, write_json
-from data import DEFAULT_DATA, load_splits
+from core import HERE, metrics, score_batches, select_threshold_for_recall, write_json, input_options
+from data import load_splits, matches_split
 from modeling import DEFAULT_RECALL, estimator, vectorizer
 import joblib
 from scipy.sparse import hstack
@@ -15,13 +15,13 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 
-def search(data_dir=DEFAULT_DATA, output_dir=HERE / 'experiments' / 'optimization',
-           min_recall=DEFAULT_RECALL, baseline_model=None):
+def search(data_dir=None, output_dir=HERE / 'experiments' / 'optimization',
+           min_recall=DEFAULT_RECALL, baseline_model=None, **schema):
     if not 0 < min_recall <= 1:
         raise ValueError('min_recall musi należeć do (0,1]')
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    train, validation, test, split_info = load_splits(data_dir)
+    train, validation, test, split_info = load_splits(data_dir, **schema)
     del test  # no candidate scores, predictions or metrics are computed on test
     rows = []
 
@@ -54,7 +54,7 @@ def search(data_dir=DEFAULT_DATA, output_dir=HERE / 'experiments' / 'optimizatio
     if baseline_model:
         bundle = joblib.load(baseline_model)
         pipeline = bundle['pipeline']
-        if (bundle['split_info'] != split_info or 'tfidf' not in pipeline.named_steps
+        if (not matches_split(bundle['split_info'], split_info) or 'tfidf' not in pipeline.named_steps
                 or pipeline['tfidf'].analyzer != 'char'
                 or pipeline['tfidf'].max_features != 20000
                 or pipeline['tfidf'].ngram_range != (3, 5)
@@ -106,12 +106,16 @@ def search(data_dir=DEFAULT_DATA, output_dir=HERE / 'experiments' / 'optimizatio
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data-dir', type=Path, default=DEFAULT_DATA)
+    parser.add_argument('--input', '--data-dir', dest='data_dir', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, default=HERE / 'experiments' / 'optimization')
     parser.add_argument('--min-recall', type=float, default=DEFAULT_RECALL)
     parser.add_argument('--baseline-model', type=Path, help='opcjonalnie oryginalny model char20k')
+    input_options(parser)
     args = parser.parse_args()
-    search(**vars(args))
+    try:
+        search(**vars(args))
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
 
 
 if __name__ == '__main__':

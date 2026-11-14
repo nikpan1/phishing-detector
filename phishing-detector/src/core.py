@@ -1,5 +1,6 @@
 """Local inference, input validation, threshold selection and metrics."""
 import csv
+import gzip
 import hashlib
 import json
 import os
@@ -40,25 +41,55 @@ def write_json(path, value):
                     encoding='utf-8')
 
 
-def read_records(path, labels=False):
-    """JSONL/CSV: one record per line, required text, optional id and label."""
+def input_options(parser):
+    parser.add_argument('--text-column', default='text')
+    parser.add_argument('--label-column', default='label')
+    parser.add_argument('--id-column', default='id')
+    parser.add_argument('--positive-label', default='1', help='etykieta phishingu w pliku')
+    parser.add_argument('--negative-label', default='0', help='etykieta benign w pliku')
+    parser.add_argument('--delimiter', default=',', help='separator CSV, np. ;')
+
+
+def record_options(args):
+    return {name: getattr(args, name) for name in
+            ('text_column', 'label_column', 'id_column', 'positive_label', 'negative_label', 'delimiter')}
+
+
+def read_records(path, labels=False, text_column='text', label_column='label', id_column='id',
+                 positive_label='1', negative_label='0', delimiter=',', allow_empty=False):
+    """Read external UTF-8 CSV, JSON array/object or JSONL (also .gz)."""
+    if str(positive_label) == str(negative_label):
+        raise ValueError('etykiety positive i negative muszą być różne')
+    if len(delimiter) != 1:
+        raise ValueError('separator CSV musi być pojedynczym znakiem')
     path = Path(path)
-    with path.open(encoding='utf-8-sig', newline='') as handle:
-        is_csv = path.suffix.lower() == '.csv'
-        rows = csv.DictReader(handle) if is_csv else (json.loads(line) for line in handle if line.strip())
+    suffixes = path.suffixes
+    compressed = bool(suffixes and suffixes[-1].lower() == '.gz')
+    if compressed and len(suffixes) < 2:
+        raise ValueError('plik .gz musi mieć także rozszerzenie .csv, .json lub .jsonl')
+    kind = suffixes[-2 if compressed else -1].lower() if suffixes else ''
+    if kind not in ('.csv', '.json', '.jsonl', '.ndjson'):
+        raise ValueError('obsługiwane formaty: CSV, JSON, JSONL/NDJSON, opcjonalnie .gz')
+    opener = gzip.open if compressed else open
+    with opener(path, 'rt', encoding='utf-8-sig', newline='') as handle:
+        if kind == '.csv':
+            rows = csv.DictReader(handle, delimiter=delimiter)
+        elif kind == '.json':
+            payload = json.load(handle)
+            rows = payload if isinstance(payload, list) else [payload]
+        else:
+            rows = (json.loads(line) for line in handle if line.strip())
         for index, row in enumerate(rows, 1):
             if not isinstance(row, dict):
                 raise ValueError(f'rekord {index}: oczekiwano obiektu')
-            if not isinstance(row.get('text'), str) or not row['text'].strip():
-                raise ValueError(f'rekord {index}: text musi być niepustym napisem')
-            record = {'text': row['text'], 'id': row.get('id', index)}
+            if not allow_empty and (not isinstance(row.get(text_column), str) or not row[text_column].strip()):
+                raise ValueError(f'rekord {index}: {text_column} musi być niepustym napisem')
+            record = {'text': row.get(text_column), 'id': row.get(id_column, index)}
             if labels:
-                label = row.get('label')
-                if is_csv and label in ('0', '1'):
-                    label = int(label)
-                if type(label) is not int or label not in (0, 1):
-                    raise ValueError(f'rekord {index}: label musi być 0 lub 1')
-                record['label'] = label
+                label = row.get(label_column)
+                if isinstance(label, bool) or str(label) not in (str(positive_label), str(negative_label)):
+                    raise ValueError(f'rekord {index}: nieznana etykieta {label_column}')
+                record['label'] = int(str(label) == str(positive_label))
             yield record
 
 

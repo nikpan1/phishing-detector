@@ -80,12 +80,12 @@ rozdzielać domeny/kampanie i czas.
 
 ## Odtworzenie
 
-Z katalogu `src/`:
+Z katalogu `phishing-detector/src/`:
 
 ```bash
-.venv/bin/python optimize.py --output-dir experiments/optimization-new
-.venv/bin/python train.py --output-dir experiments/retrained
-.venv/bin/python evaluate.py --model experiments/retrained/models/pipeline.joblib --data-dir ../data
+.venv/bin/python optimize.py --input /sciezka/dane.json --output-dir experiments/optimization-new
+.venv/bin/python train.py --input /sciezka/dane.json --output-dir experiments/retrained
+.venv/bin/python evaluate.py --model experiments/retrained/models/pipeline.joblib --dataset /sciezka/dane.json
 ```
 
 `optimize.py` porównuje osiem wariantów i zapisuje wybór bez oceny testu.

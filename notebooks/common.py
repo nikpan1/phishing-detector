@@ -21,50 +21,19 @@ SEED = 42
 
 
 def load_splits(limit=8000):
-    """Sprawdź cały zbiór, usuń duplikaty, pobierz próbę, podziel 60/20/20."""
-    directory = ROOT / 'data'
-    manifest = json.loads((directory / 'manifest.json').read_text())
-    compressed = io.BytesIO()
-    for part in manifest['parts']:
-        raw = (directory / part['file']).read_bytes()
-        assert len(raw) == part['bytes']
-        assert hashlib.sha256(raw).hexdigest() == part['sha256'], part['file']
-        compressed.write(raw)
-    compressed.seek(0)
-    raw = gzip.decompress(compressed.read())
-    assert hashlib.sha256(raw).hexdigest() == manifest['original_sha256']
-    records = json.loads(raw)
-    assert len(records) == manifest['records']
-    frame = pd.DataFrame(records)[['text', 'label']]
-    assert frame.text.map(lambda s: isinstance(s, str)).all()
-    assert set(frame.label.unique()) == {0, 1}
-    # Ten sam klucz do deduplikacji i sprawdzenia rozłączności podziałów.
-    frame['key'] = frame.text.map(
-        lambda s: hashlib.sha256(re.sub(r'\s+', ' ', s[:4000]).strip().lower().encode()).hexdigest())
-    conflicting = frame.groupby('key').label.nunique()
-    conflicts = set(conflicting[conflicting > 1].index)
-    valid = frame.text.str.strip().ne('') & ~frame.key.isin(conflicts)
-    frame = frame[valid].drop_duplicates('key').reset_index(drop=True)
-    if limit is not None and len(frame) > limit:
-        frame, _ = train_test_split(frame, train_size=limit, stratify=frame.label,
-                                    random_state=SEED)
-    train, rest = train_test_split(frame, test_size=0.4, stratify=frame.label,
-                                   random_state=SEED)
-    validation, test = train_test_split(rest, test_size=0.5, stratify=rest.label,
-                                       random_state=SEED)
-    for left, right in [(train, validation), (train, test), (validation, test)]:
-        assert set(left.key).isdisjoint(right.key)
-    # Wspólny limit wejścia: czas i RAM nie zależą od wyjątkowo długiego HTML.
+    """Historical comparison notebooks now read an explicitly supplied external file."""
+    import os
+    import sys
+    dataset = os.environ.get('PHISHING_DATASET')
+    if not dataset:
+        raise ValueError('Ustaw PHISHING_DATASET na lokalny plik CSV, JSON lub JSONL z text,label')
+    sys.path.insert(0, str(ROOT / 'phishing-detector' / 'src'))
+    from data import load_splits as external_splits
+    train, validation, test, info = external_splits(dataset, seed=SEED, limit=limit)
     for split in (train, validation, test):
-        split['input'] = split.text.str.slice(0, 4000)
-    info = dict(source_records=manifest['records'], deduplicated_sample=len(frame),
-                conflicting_keys_removed=len(conflicts), seed=SEED,
-                train=len(train), validation=len(validation), test=len(test),
-                max_input_chars=4000,
-                split_sha256={name: hashlib.sha256('\n'.join(sorted(s.key)).encode()).hexdigest()
-                              for name, s in [('train',train),('validation',validation),('test',test)]})
+        split['input'] = split.text
     print(json.dumps(info, indent=2))
-    return train.reset_index(drop=True), validation.reset_index(drop=True), test.reset_index(drop=True)
+    return train, validation, test
 
 
 def classification_metrics(y, pred, scores):

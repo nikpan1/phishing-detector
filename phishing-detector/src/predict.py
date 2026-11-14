@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 
-from core import DEFAULT_MODEL, load_model, read_records, score_texts
+from core import DEFAULT_MODEL, load_model, read_records, score_texts, input_options, record_options
 
 
 def main():
@@ -17,6 +17,7 @@ def main():
     inputs.add_argument('--input', type=Path)
     parser.add_argument('--output', type=Path, help='JSONL; domyślnie stdout')
     parser.add_argument('--batch-size', type=int, default=256)
+    input_options(parser)
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error('--batch-size musi być dodatni')
@@ -25,7 +26,7 @@ def main():
                 args.model.resolve(), args.input.resolve() if args.input else None}:
             raise ValueError('plik wyjściowy nie może nadpisywać wejścia ani modelu')
         bundle = load_model(args.model)
-        records = iter([{'id':1, 'text':args.text}]) if args.text is not None else read_records(args.input)
+        records = iter([{'id':1, 'text':args.text}]) if args.text is not None else read_records(args.input, **record_options(args))
         output = args.output.open('w', encoding='utf-8') if args.output else nullcontext(sys.stdout)
         count = 0
         with output as handle:

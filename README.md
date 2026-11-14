@@ -1,81 +1,65 @@
-# phishing-detector
+# Filtr antyphishingowy
 
-Lokalny filtr antyphishingowy oparty na **TF-IDF znakowych 3–5-gramów, słownych 1–2-gramów i liniowym SVM**.
-Gotowy model, skrypty i notebook znajdują się w [`src/`](src/README.md).
-Predykcja działa na CPU, bez internetu i API modeli.
+Lokalny model **TF-IDF (znaki + słowa) i liniowy SVM**. Predykcja działa na CPU, bez API modeli i dostępu do sieci.
 
-**Wyniki na 15 351 próbkach testowych:**
+## Jak uruchomić
 
-| Kryterium | Wynik |
-| --- | --- |
-| Czułość | **92,49%** |
-| FPR — fałszywe alarmy wśród legalnych próbek | **2,96%** |
-| Rozmiar modelu | **1,525 MiB** |
-| Predykcja | **1,273 ms/próbkę w batchu** |
-
-Czas obejmuje normalizację, TF-IDF i SVM, bez ładowania plików; rozmiar dotyczy
-skompresowanego modelu. Szczegóły: [raport testu](src/reports/test_metrics.json).
-
-## Kluczowe wizualizacje z raportu
-
-**Usprawnienie:** FPR 5,09% → **2,96%**, przy wzroście czułości
-92,14% → **92,49%**. Fałszywe alarmy: **456 → 265**.
-Model jest większy i wolniejszy; [porównanie i protokół wyboru](src/reports/optimization.md).
-
-![Porównanie modelu przed i po usprawnieniu](src/reports/optimization.png)
-
-Pozostałe wykresy porównują metody na próbie **8000 rekordów**. Tabela powyżej
-opisuje końcowy model trenowany na pełnym zbiorze po deduplikacji.
-
-**Reguły i podobieństwo tekstu:** regex, Levenshtein, Jaro–Winkler i Jaccard
-wykazują wysoki odsetek fałszywych alarmów.
-
-![Jakość reguł i metryk podobieństwa](docs/raport/diagramy/01-reguly-jakosc.png)
-
-**Clustering:** DBSCAN, HDBSCAN i K-Means grupują podobne próbki.
-Silhouette opisuje separację grup; klaster nie oznacza automatycznie phishingu.
-
-![Porównanie klasteryzacji](docs/raport/diagramy/02-klastry.png)
-
-**Statystyczny ML:** SVM z n-gramami znakowymi uzyskał najwyższe F1 w porównaniu
-z Naive Bayes i Random Forest. Był to punkt wyjścia do połączenia cech znakowych i słownych.
-
-![Porównanie klasyfikatorów i reprezentacji tekstu](docs/raport/diagramy/03-ml-jakosc.png)
-
-Pełne omówienie, koszty predykcji i wyniki Isolation Forest: [raport](docs/raport.md).
-
-## Architektura i działanie pipeline’u
-
-```mermaid
-flowchart LR
-    A["Tekst wiadomości / URL"] --> B["Normalizacja i limit 4000 znaków"]
-    B --> C["TF-IDF znakowe: 60 000 cech"]
-    B --> W["TF-IDF słowne: 30 000 cech"]
-    C --> U["Połączenie 90 000 cech"]
-    W --> U
-    U --> D["Liniowy SVM, C=0.25"]
-    D --> E["Próg z walidacji"]
-    E --> F["Benign / phishing"]
-```
-
-Normalizacja scala białe znaki i zamienia litery na małe. TF-IDF koduje tekst
-w 60 000 cech znakowych i 30 000 słownych, a SVM oblicza margines decyzji — nie prawdopodobieństwo.
-Model ładowany jest raz; `predict.py` obsługuje pojedynczy tekst oraz batche JSONL/CSV.
-
-Trening używa wyłącznie części treningowej. Próg minimalizuje FPR przy
-czułości ≥92,8% na walidacji; nie gwarantuje tego wyniku na nowych danych. Losowy test
-mieszaniny URL, SMS, e-maili i HTML nie potwierdza odporności na Zero-Day.
-
-## Uruchomienie
-
-Python 3.12; komendy z katalogu głównego repozytorium:
+Python 3.12, komendy z katalogu repozytorium:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r src/requirements.txt
-.venv/bin/python src/predict.py --text "Meeting tomorrow at ten."
-.venv/bin/python src/evaluate.py --input src/examples/test.jsonl
+.venv/bin/python -m pip install -r phishing-detector/src/requirements.txt
+.venv/bin/python phishing-detector/src/predict.py --input phishing-detector/src/examples/test.jsonl --output /tmp/predictions.jsonl
+.venv/bin/python phishing-detector/src/evaluate.py --input phishing-detector/src/examples/test.jsonl
+.venv/bin/python phishing-detector/src/train.py --input /sciezka/trening.json --output-dir /tmp/moj-model
 ```
 
-[Instrukcja pakietu i treningu](src/README.md) · [Notatniki porównawcze](notebooks/)
-· [Dane](data/README.md) · [Treść zadania](docs/zadanie/zadanie.md)
+W predykcji i ocenie zastąp ścieżkę do `examples/test.jsonl` własnym plikiem w `--input`.
+Obsługiwane dane: **CSV, JSON, JSONL**, również `.gz`. Pole `text` zawiera tekst lub URL; do treningu i oceny potrzebne jest `label`: `0` = benign, `1` = phishing. `id` jest opcjonalne. JSON to lista obiektów, JSONL — jeden obiekt na wiersz.
+Nazwy pól i etykiety można zmienić przez `--text-column`, `--label-column`, `--positive-label`, `--negative-label`; separator CSV przez `--delimiter`.
+Własny model wskazuje się przez `--model /tmp/moj-model/models/pipeline.joblib`. Przykłady i komendy notebooka: [instrukcja pakietu](phishing-detector/src/README.md).
+
+## Architektura
+
+```mermaid
+flowchart LR
+    A["Tekst / URL"] --> N["Normalizacja, limit 4000 znaków"]
+    N --> C["TF-IDF: znaki 3–5, 60k cech"]
+    N --> W["TF-IDF: słowa 1–2, 30k cech"]
+    C --> U["Połączenie cech"]
+    W --> U
+    U --> S["Liniowy SVM, C=0.25"]
+    S --> P["Próg → benign / phishing"]
+```
+
+Słowniki i SVM są uczone tylko na treningu. Próg minimalizuje FPR przy czułości ≥92,8% na walidacji. SVM zwraca margines, nie prawdopodobieństwo. Dane treningowe podaje użytkownik; nie są dołączone do repozytorium.
+
+## Working tree
+
+```text
+phishing-detector/src/
+├── predict.py, evaluate.py, train.py   # skrypty CLI
+├── core.py, data.py, modeling.py       # pipeline i obsługa danych
+├── optimize.py                        # porównanie modeli na walidacji
+├── models/                            # gotowy model i metadane
+├── notebooks/training.ipynb           # wykonany notebook rozwiązania
+├── examples/test.jsonl                # 200 próbek do sprawdzenia pakietu
+├── reports/                           # wyniki, diagram i porównanie
+└── tests/, requirements*.txt, run_notebook.py
+```
+
+## Wyniki
+
+Test: **15 351 próbek** (URL, SMS, e-maile, HTML).
+
+| Miara | Wynik |
+| --- | --- |
+| Czułość | **92,49%** |
+| FPR | **2,96%** |
+| Precision / F1 | **95,71% / 0,941** |
+| Rozmiar modelu | **1,525 MiB** |
+| Predykcja | **1,273 ms/próbkę w batchu** |
+
+![Porównanie filtra przed i po usprawnieniu](phishing-detector/src/reports/optimization.png)
+
+FPR spadł z 5,09% do 2,96% (456 → 265 fałszywych alarmów). Czas obejmuje normalizację i predykcję, bez ładowania plików; rozmiar dotyczy skompresowanego modelu. To ten sam losowy test co wcześniej, nie niezależny benchmark nowych kampanii. [Pełne wyniki](phishing-detector/src/reports/test_metrics.json).

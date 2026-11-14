@@ -20,7 +20,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--notebook', choices=['01', '02', '03'],
                         help='Run only this notebook; default: all three.')
+    parser.add_argument('--input', type=Path, required=True, help='CSV/JSON/JSONL z text,label')
     args = parser.parse_args()
+    os.environ['PHISHING_DATASET'] = str(args.input.resolve())
     root = Path(__file__).resolve().parents[1]
     paths = sorted((root / 'notebooks').glob(f'{args.notebook or "0"}*.ipynb'))
     assert len(paths) == (1 if args.notebook else 3)

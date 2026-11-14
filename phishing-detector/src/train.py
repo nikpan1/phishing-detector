@@ -9,8 +9,8 @@ import warnings
 from time import perf_counter
 
 from core import (HERE, evaluate_model, metrics, score_batches, select_threshold,
-                  select_threshold_for_recall, write_json)
-from data import DEFAULT_DATA, load_splits
+                  select_threshold_for_recall, write_json, input_options, record_options)
+from data import load_splits
 import joblib
 import numpy as np
 import pandas as pd
@@ -54,7 +54,7 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
     bundle = joblib.load(model_path)
     print(f'4/5 Ocena odłożonego testu: {len(test)} rekordów', file=sys.stderr, flush=True)
     test_metrics = evaluate_model(bundle, test.text.tolist(), test.label.tolist(), model_path)
-    test_metrics['scope'] = 'same held-out test as baseline; not used in this optimization selection; not a new blind test'
+    test_metrics['scope'] = 'held-out test from supplied dataset; not used in fitting or threshold selection'
     write_json(output_dir / 'reports' / 'test_metrics.json', test_metrics)
     metadata = dict(format_version=1, architecture=architecture_name(config), configuration=config,
                     threshold=bundle['threshold'], threshold_policy=policy,
@@ -76,17 +76,17 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
             handle.write(json.dumps({'id':row.key, 'text':row.text, 'label':int(row.label)},
                                     ensure_ascii=False) + '\n')
     sample_metrics = evaluate_model(bundle, sample.text.tolist(), sample.label.tolist(), model_path)
-    sample_metrics['scope'] = '200-record subset of held-out test, not an independent test'
+    sample_metrics['scope'] = f'{count}-record subset of held-out test, not an independent test'
     write_json(output_dir / 'reports' / 'sample_metrics.json', sample_metrics)
     print('5/5 Zapisano model, metadane, raporty i przykłady testowe', file=sys.stderr, flush=True)
     return metadata, test_metrics
 
 
-def train_model(data_dir=DEFAULT_DATA, output_dir=HERE, seed=42, limit=0,
+def train_model(data_dir=None, output_dir=HERE / 'outputs' / 'trained', seed=42, limit=0,
                 max_chars=4000, max_features=DEFAULT_CONFIG['max_features'],
                 word_features=DEFAULT_CONFIG['word_features'], svm_c=DEFAULT_CONFIG['svm_c'],
                 architecture=DEFAULT_CONFIG['architecture'], classifier=DEFAULT_CONFIG['classifier'],
-                max_fpr=None, min_recall=None):
+                max_fpr=None, min_recall=None, **schema):
     if max_chars <= 0 or limit < 0:
         raise ValueError('nieprawidłowe parametry treningu')
     if max_fpr is not None and min_recall is not None:
@@ -96,7 +96,7 @@ def train_model(data_dir=DEFAULT_DATA, output_dir=HERE, seed=42, limit=0,
     if min_recall is not None and not 0 < min_recall <= 1:
         raise ValueError('min_recall musi należeć do (0,1]')
     print('1/5 Wczytywanie, SHA-256, normalizacja, deduplikacja i podział danych', file=sys.stderr, flush=True)
-    train, validation, test, split_info = load_splits(data_dir, seed, limit, max_chars)
+    train, validation, test, split_info = load_splits(data_dir, seed, limit, max_chars, **schema)
     config = dict(architecture=architecture, max_features=max_features, word_features=word_features,
                   svm_c=svm_c, classifier=classifier)
     pipeline = build_pipeline(**config, seed=seed)
@@ -111,8 +111,8 @@ def train_model(data_dir=DEFAULT_DATA, output_dir=HERE, seed=42, limit=0,
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data-dir', type=Path, default=DEFAULT_DATA)
-    parser.add_argument('--output-dir', type=Path, default=HERE)
+    parser.add_argument('--input', '--data-dir', dest='data_dir', type=Path, required=True)
+    parser.add_argument('--output-dir', type=Path, default=HERE / 'outputs' / 'trained')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--limit', type=int, default=0, help='0 = pełny zbiór; dodatni limit = eksperyment')
     parser.add_argument('--max-chars', type=int, default=4000)
@@ -124,8 +124,13 @@ def main():
     policy = parser.add_mutually_exclusive_group()
     policy.add_argument('--max-fpr', type=float, help='maksymalizuj recall przy limicie FPR walidacji')
     policy.add_argument('--min-recall', type=float, help='minimalizuj FPR; domyślne minimum recall: 0.928')
+    input_options(parser)
     args = parser.parse_args()
-    metadata, report = train_model(**vars(args))
+    options = vars(args).copy()
+    try:
+        metadata, report = train_model(**options)
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
     print(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False))
 
 

@@ -1,6 +1,8 @@
 """Boundary and end-to-end checks for the delivered local model."""
 import hashlib
 import io
+import csv
+import gzip
 from contextlib import redirect_stdout
 import json
 from pathlib import Path
@@ -19,6 +21,7 @@ sys.path.insert(0, str(SRC))
 from core import (DEFAULT_MODEL, load_model, metrics, normalize, read_records,
                   score_texts, select_threshold, select_threshold_for_recall, wilson_interval)
 from modeling import build_pipeline, feature_count
+from data import load_splits, matches_split
 
 
 class PreprocessingTests(unittest.TestCase):
@@ -171,6 +174,70 @@ class TrainingRecipeTests(unittest.TestCase):
                 joblib.dump(bundle, path)
                 restored = load_model(path)
                 np.testing.assert_allclose(score_texts(bundle, texts), score_texts(restored, texts))
+
+
+class ExternalDataTests(unittest.TestCase):
+    @staticmethod
+    def records():
+        return [{'message': f'team meeting agenda reference {i}', 'kind': 'safe'} for i in range(30)] + [
+            {'message': f'urgent verify account password reference {i}', 'kind': 'phish'} for i in range(30)]
+
+    def test_external_formats_and_custom_schema(self):
+        options = dict(text_column='message', label_column='kind',
+                       positive_label='phish', negative_label='safe', delimiter=';')
+        rows = self.records()
+        with tempfile.TemporaryDirectory() as directory:
+            for suffix in ['.csv', '.json', '.jsonl', '.json.gz', '.csv.gz', '.jsonl.gz']:
+                with self.subTest(suffix=suffix):
+                    path = Path(directory) / ('external' + suffix)
+                    opener = gzip.open if suffix.endswith('.gz') else open
+                    with opener(path, 'wt', encoding='utf-8', newline='') as handle:
+                        if '.csv' in suffix:
+                            writer = csv.DictWriter(handle, fieldnames=['message','kind'], delimiter=';')
+                            writer.writeheader(); writer.writerows(rows)
+                        elif '.jsonl' in suffix:
+                            handle.writelines(json.dumps(row) + '\n' for row in rows)
+                        else:
+                            json.dump(rows, handle)
+                    train, val, test, info = load_splits(path, **options)
+                    self.assertEqual([len(train),len(val),len(test)], [36,12,12])
+                    self.assertEqual(info['source_records'], 60)
+                    self.assertEqual(set(train.label), {0,1})
+                    self.assertTrue(set(train.key).isdisjoint(test.key))
+                    altered = {**info, 'schema': {**info['schema'], 'positive_label':'safe'}}
+                    self.assertFalse(matches_split(info, altered))
+
+    def test_train_predict_and_evaluate_external_file_outside_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / 'external.csv'
+            with dataset.open('w', encoding='utf-8', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=['message','kind'], delimiter=';')
+                writer.writeheader(); writer.writerows(self.records())
+            mapping = ['--text-column','message','--label-column','kind',
+                       '--positive-label','phish','--negative-label','safe','--delimiter',';']
+            result = subprocess.run([sys.executable, str(SRC / 'train.py'), '--input', str(dataset),
+                '--output-dir', str(root / 'model'), '--max-features','500','--word-features','200',
+                *mapping], cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            model = root / 'model' / 'models' / 'pipeline.joblib'
+            self.assertTrue(model.exists())
+            output = subprocess.check_output([sys.executable, str(SRC / 'predict.py'), '--model',str(model),
+                '--input',str(dataset), *mapping], cwd=root, text=True)
+            self.assertEqual(len(output.splitlines()),60)
+            report = json.loads(subprocess.check_output([sys.executable,str(SRC / 'evaluate.py'),
+                '--model',str(model),'--input',str(dataset),*mapping], cwd=root, text=True))
+            self.assertEqual(report['samples'],60)
+            reconstructed = json.loads(subprocess.check_output([sys.executable,str(SRC / 'evaluate.py'),
+                '--model',str(model),'--dataset',str(dataset)], cwd=root, text=True))
+            self.assertEqual(reconstructed['samples'],12)
+
+    def test_rejects_insufficient_training_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'tiny.json'
+            path.write_text(json.dumps([{'text':'hello','label':0},{'text':'account','label':1}]))
+            with self.assertRaisesRegex(ValueError, 'co najmniej 5'):
+                load_splits(path)
 
 
 if __name__ == '__main__':
