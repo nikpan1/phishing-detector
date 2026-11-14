@@ -1,0 +1,70 @@
+{
+  "format_version": 1,
+  "architecture": "char TF-IDF (3,5) + LinearSVC",
+  "threshold": 0.02570551450246883,
+  "threshold_policy": {
+    "objective": "maximum validation recall",
+    "max_validation_fpr": 0.05,
+    "tie_break": "lower FPR, then higher threshold"
+  },
+  "split_info": {
+    "source_sha256": "222fd5f841a0565841f8ede2e21b9b48cfea933a6b5c3a7da3e3a2cbc156d3d5",
+    "source_revision": "55caf9af01ae498d68ff44886ff69a4b165eb54b",
+    "source_records": 77677,
+    "invalid_records": 1,
+    "conflicting_records_removed": 49,
+    "duplicates_removed": 875,
+    "retained_records": 76752,
+    "selected_records": 76752,
+    "seed": 42,
+    "limit": 0,
+    "max_chars": 4000,
+    "splits": {
+      "train": {
+        "samples": 46051,
+        "phishing": 19168,
+        "keys_sha256": "0735bd8c01ebc825a80d16e23d0b7dbc43df362315edb2b4c1ed8e695f05e085"
+      },
+      "validation": {
+        "samples": 15350,
+        "phishing": 6389,
+        "keys_sha256": "32675f79a61b75b37fa8e1e7c75548cb65bd9b2009d9c3713ca5c1dbc6e16e3c"
+      },
+      "test": {
+        "samples": 15351,
+        "phishing": 6390,
+        "keys_sha256": "dfd8553894d3de6c0fcc0681c01b45bbd69614d391b3bdb569720523ae5f9f1d"
+      }
+    }
+  },
+  "validation": {
+    "samples": 15350,
+    "phishing_samples": 6389,
+    "benign_samples": 8961,
+    "accuracy": 0.9408469055374593,
+    "precision": 0.9300172603169622,
+    "recall": 0.9276882141180154,
+    "f1": 0.9288512772292744,
+    "fpr": 0.049771230889409664,
+    "roc_auc": 0.9834307826218094,
+    "average_precision": 0.9775982851271695,
+    "confusion_matrix": {
+      "tn": 8515,
+      "fp": 446,
+      "fn": 462,
+      "tp": 5927
+    }
+  },
+  "features": 20000,
+  "fit_seconds": 106.93522592199997,
+  "model_bytes": 344471,
+  "model_sha256": "64142a7e1544c91d2966784ad21a9cbdedb614f42d3cbfc70edbdb913c9b243b",
+  "versions": {
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "pandas": "2.2.3",
+    "scipy": "1.17.0",
+    "scikit-learn": "1.8.0",
+    "joblib": "1.5.3"
+  }
+}

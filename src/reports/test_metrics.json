@@ -1,0 +1,30 @@
+{
+  "samples": 15351,
+  "phishing_samples": 6390,
+  "benign_samples": 8961,
+  "accuracy": 0.937593642108006,
+  "precision": 0.9281210592686002,
+  "recall": 0.9214397496087637,
+  "f1": 0.9247683367362965,
+  "fpr": 0.05088717777033813,
+  "roc_auc": 0.9827059930538855,
+  "average_precision": 0.9763608082171388,
+  "confusion_matrix": {
+    "tn": 8505,
+    "fp": 456,
+    "fn": 502,
+    "tp": 5888
+  },
+  "threshold": 0.02570551450246883,
+  "model_bytes": 344471,
+  "model_mib": 0.32851314544677734,
+  "model_sha256": "64142a7e1544c91d2966784ad21a9cbdedb614f42d3cbfc70edbdb913c9b243b",
+  "timing": {
+    "batch_samples": 512,
+    "repeats": 5,
+    "median_ms_per_sample": 0.9208021035158609,
+    "includes": "normalization + TF-IDF + SVM; excludes file/model loading",
+    "kind": "batch throughput, not single-request latency"
+  },
+  "scope": "full held-out test; not used in fitting or threshold selection"
+}
