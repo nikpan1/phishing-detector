@@ -13,6 +13,8 @@ na zbiorze `ealvaradob/phishing-dataset`, wariant `combined_reduced`:
 
 Każdy kończy się wspólną tabelą porównawczą swoich metod i omówieniem ograniczeń.
 Wyniki wykonania są zapisane w notatnikach oraz w [results](results/).
+Notatniki zawierają również diagramy przepływu, wykresy porównawcze i mapy
+wyników zapisane jako obrazy wewnątrz plików — są widoczne także na GitHubie.
 
 ## Uruchomienie
 
