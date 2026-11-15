@@ -8,7 +8,7 @@ import sys
 import warnings
 from time import perf_counter
 
-from core import (HERE, evaluate_model, metrics, score_batches, select_threshold,
+from core import (HERE, evaluate_model, load_model, metrics, score_batches, select_threshold,
                   select_threshold_for_recall, write_json, input_options, record_options)
 from data import load_splits
 import joblib
@@ -19,11 +19,14 @@ import sklearn
 from sklearn.exceptions import ConvergenceWarning
 from modeling import (DEFAULT_CONFIG, DEFAULT_RECALL, MODEL_COMPRESSION, architecture_name,
                       build_pipeline, compact_pipeline, feature_count)
+from compression import (DEFAULT_CHAR_KEEP, DEFAULT_WORD_KEEP, DEFAULT_WEIGHT_BITS,
+                         compress_pipeline, dump_model)
 from sklearn.model_selection import train_test_split
 
 
 def export_solution(pipeline, validation, test, split_info, output_dir, config,
-                    fit_seconds, max_chars=4000, max_fpr=None, min_recall=None):
+                    fit_seconds, max_chars=4000, max_fpr=None, min_recall=None, quantization=None,
+                    fit_seconds_scope='full training including pruning and classifier refit'):
     output_dir = Path(output_dir)
     if max_fpr is not None and min_recall is not None:
         raise ValueError('wybierz max_fpr albo min_recall')
@@ -51,9 +54,9 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
         raise RuntimeError('próg nie spełnia budżetu FPR walidacji')
     model_path = output_dir / 'models' / 'pipeline.joblib'
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, model_path, compress=MODEL_COMPRESSION)
+    dump_model(bundle, model_path)
     # Evaluate the serialized artifact, not just the in-memory estimator.
-    bundle = joblib.load(model_path)
+    bundle = load_model(model_path)
     print(f'4/5 Ocena odłożonego testu: {len(test)} rekordów', file=sys.stderr, flush=True)
     test_metrics = evaluate_model(bundle, test.text.tolist(), test.label.tolist(), model_path)
     test_metrics['scope'] = 'held-out test from supplied dataset; not used in fitting or threshold selection'
@@ -62,8 +65,10 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
                     threshold=bundle['threshold'], threshold_policy=policy,
                     split_info=split_info, validation=validation_metrics,
                     features=feature_count(pipeline), fit_seconds=fit_seconds,
+                    fit_seconds_scope=fit_seconds_scope,
                     storage={'compression': list(MODEL_COMPRESSION), 'weights_dtype': 'float32',
-                             'vocabulary_indices': 'python int, sorted by term'},
+                             'vocabulary': 'ordered tuple, indices reconstructed at load',
+                             'quantization': quantization},
                     model_bytes=model_path.stat().st_size,
                     model_sha256=hashlib.sha256(model_path.read_bytes()).hexdigest(),
                     versions={'python':platform.python_version(), 'numpy':np.__version__,
@@ -90,9 +95,12 @@ def train_model(data_dir=None, output_dir=HERE / 'outputs' / 'trained', seed=42,
                 max_chars=4000, max_features=DEFAULT_CONFIG['max_features'],
                 word_features=DEFAULT_CONFIG['word_features'], svm_c=DEFAULT_CONFIG['svm_c'],
                 architecture=DEFAULT_CONFIG['architecture'], classifier=DEFAULT_CONFIG['classifier'],
-                max_fpr=None, min_recall=None, **schema):
+                max_fpr=None, min_recall=None, char_keep=DEFAULT_CHAR_KEEP,
+                word_keep=DEFAULT_WORD_KEEP, weight_bits=DEFAULT_WEIGHT_BITS, **schema):
     if max_chars <= 0 or limit < 0:
         raise ValueError('nieprawidłowe parametry treningu')
+    if char_keep < 0 or word_keep < 0 or weight_bits not in (6, 8, 10, 32):
+        raise ValueError('nieprawidłowe parametry kompresji')
     if max_fpr is not None and min_recall is not None:
         raise ValueError('wybierz max_fpr albo min_recall')
     if max_fpr is not None and not 0 <= max_fpr <= 1:
@@ -109,8 +117,13 @@ def train_model(data_dir=None, output_dir=HERE / 'outputs' / 'trained', seed=42,
     with warnings.catch_warnings():
         warnings.simplefilter('error', ConvergenceWarning)
         pipeline.fit(train.text, train.label)
+        pipeline, quantization = compress_pipeline(
+            pipeline, train.text, train.label, char_keep, word_keep, weight_bits)
+    config['compression'] = dict(char_keep=char_keep, word_keep=word_keep,
+                                 weight_bits=weight_bits,
+                                 feature_selection='top absolute training weights per branch; refit on train')
     return export_solution(pipeline, validation, test, split_info, output_dir, config,
-                           perf_counter() - start, max_chars, max_fpr, min_recall)
+                           perf_counter() - start, max_chars, max_fpr, min_recall, quantization)
 
 
 def main():
@@ -125,6 +138,12 @@ def main():
     parser.add_argument('--architecture', choices=['char', 'hybrid'], default=DEFAULT_CONFIG['architecture'])
     parser.add_argument('--classifier', choices=['svm', 'logistic'], default=DEFAULT_CONFIG['classifier'])
     parser.add_argument('--svm-c', type=float, default=DEFAULT_CONFIG['svm_c'])
+    parser.add_argument('--char-keep', type=int, default=DEFAULT_CHAR_KEEP,
+                        help='zachowane cechy znakowe po treningu; 0 = wszystkie')
+    parser.add_argument('--word-keep', type=int, default=DEFAULT_WORD_KEEP,
+                        help='zachowane cechy słowne po treningu; 0 = wszystkie')
+    parser.add_argument('--weight-bits', type=int, choices=[6, 8, 10, 32], default=DEFAULT_WEIGHT_BITS,
+                        help='siatka kwantyzacji; 32 = bez kwantyzacji')
     policy = parser.add_mutually_exclusive_group()
     policy.add_argument('--max-fpr', type=float, help='maksymalizuj recall przy limicie FPR walidacji')
     policy.add_argument('--min-recall', type=float, help='minimalizuj FPR; domyślne minimum recall: 0.928')

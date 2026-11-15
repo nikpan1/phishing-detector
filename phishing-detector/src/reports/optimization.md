@@ -1,6 +1,6 @@
 # Usprawnienie FPR i jakości
 
-**Raport historyczny sprzed kompresji.** Aktualny model ma 0,681 MiB przy niezmienionych klasyfikacjach testowych. Nowe pomiary: [size_optimization.json](size_optimization.json).
+**Raport historyczny sprzed obu etapów kompresji.** Aktualny model ma 0,073 MiB; bieżące wyniki i koszt jakości: [compression_comparison.json](compression_comparison.json).
 
 Zmieniono reprezentację i regularyzację, zamiast obniżać FPR wyłącznie kosztem czułości.
 Wszystkie cechy i klasyfikatory dopasowano tylko na train. **Przed eksperymentem**

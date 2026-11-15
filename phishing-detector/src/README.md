@@ -43,11 +43,11 @@ Notebook domyślnie używa gotowego modelu i 200 dołączonych próbek. Do ponow
 flowchart LR
     T["Tekst / URL"] --> N["Normalizacja + limit 4000 znaków"]
     N --> F["TF-IDF: znaki 3–5 + słowa 1–2"]
-    F --> S["90 000 cech → liniowy SVM"]
+    F --> S["15 000 cech → liniowy SVM"]
     S --> P["Próg → benign / phishing"]
 ```
 
-Trening usuwa identyczne wejścia i konflikty etykiet; dzieli wskazane dane 60/20/20 (seed=42). Reprezentacje uczone są wyłącznie na train; próg minimalizuje FPR przy walidacyjnej czułości ≥92,8%. `--min-recall` zmienia to minimum; alternatywne `--max-fpr` ustala limit walidacyjnego FPR. Test nie wybiera progu. Gotowy model ma SVM `C=0.25` i 60k cech znakowych + 30k słownych.
+Trening usuwa identyczne wejścia i konflikty etykiet; dzieli wskazane dane 60/20/20 (seed=42). Reprezentacje uczone są wyłącznie na train; próg minimalizuje FPR przy walidacyjnej czułości ≥92,8%. `--min-recall` zmienia to minimum; alternatywne `--max-fpr` ustala limit walidacyjnego FPR. Test nie wybiera progu. Gotowy model ma SVM `C=0.25` i 10k cech znakowych + 5k słownych po selekcji z bazowych 90k cech.
 
 ## Working tree
 
@@ -58,19 +58,57 @@ examples/test.jsonl      # 200 rekordów z odłożonego testu
 reports/                 # metryki i porównanie przed/po
 predict.py, evaluate.py  # predykcja i ocena własnych plików
 train.py, optimize.py    # trening i wybór modeli na walidacji
+compression.py, compress_model.py, search_compression.py  # kompresja i jej wybór
 core.py, data.py, modeling.py, tests/, requirements*.txt, run_notebook.py
 ```
 
-## Wyniki
+## Wyniki po kompresji
 
-Na **15 351 próbkach testowych**: czułość **92,49%**, FPR **2,96%**, precision **95,71%**, F1 **0,941**. Model: **0,681 MiB**; predykcja: **1,060 ms/próbkę w batchu** (mediana 5 powtórzeń, 512 próbek, CPU, bez ładowania modelu i danych).
+Porównanie na tych samych **15 351 próbkach testowych**, po wyborze wariantu wyłącznie na walidacji:
 
-![Historyczne wyniki jakości przed kompresją](reports/optimization.png)
+| Miara | Przed | Po |
+| --- | --- | --- |
+| Rozmiar modelu | 0,681 MiB | **0,073 MiB** |
+| Czułość | 92,49% | **92,63%** |
+| FPR | 2,96% | **3,14%** |
+| Precision | 95,71% | 95,47% |
+| F1 | 0,9407 | 0,9403 |
+| Fałszywe alarmy / przeoczony phishing | 265 / 480 | **281 / 471** |
+| Predykcja [ms/próbkę] | 0,892 | **0,788** |
+| Ładowanie [ms] | 127,3 | **13,5** |
 
-[Raport testu](reports/test_metrics.json) · [Porównanie modeli](reports/optimization.md). Test był już używany wcześniej; wynik nie dowodzi odporności na nowe kampanie. Same URL nadal mają FPR około 10,2%. Dołączone 200 rekordów to podzbiór testu, nie nowa walidacja.
+Model zmniejszono o **89,29% (9,33×)** względem poprzednich 0,681 MiB; ma dokładnie **76 518 bajtów**. To rozmiar pliku modelu, nie całego repozytorium ani zależności Pythona.
 
-## Zmniejszenie rozmiaru
+Czułość wzrosła o 0,14 punktu procentowego, FPR wzrósł o 0,18 punktu procentowego. W całym teście oznacza to 9 mniej przeoczonych ataków i 16 dodatkowych fałszywych alarmów. Zmieniły się 193 klasyfikacje. Czas to mediana pięciu pomiarów po rozgrzewce na batchu 512 próbek; oba modele zmierzono ponownie na tym samym CPU. Pomiar predykcji nie obejmuje ładowania modelu/danych, a wyniki czasowe zależą od obciążenia.
 
-Model zmniejszono z **1,525 do 0,681 MiB** (**−55,35%**, **2,24× mniejszy**). Zachowano wszystkie 90 000 cech, IDF i próg. Zastosowano indeksy Python int, uporządkowany zapis słowników, wagi SVM float32 oraz kompresję LZMA (6), obsługiwaną bezpośrednio przez joblib. Nowy trening i wyszukiwanie również zapisują model w ten sposób, a próg nowych modeli dobierają po konwersji wag.
+## Jak uzyskano mniejszy model
 
-Porównanie na identycznych podziałach: **0 zmienionych klasyfikacji / 15 350 walidacyjnych i 15 351 testowych**. Czułość i FPR pozostały bez zmian. Float32 nie gwarantuje identycznych marginesów dla każdego możliwego wejścia. Obie wersje zmierzono ponownie na tym samym CPU; czasy zależą od obciążenia. [Dokładny raport rozmiaru, jakości, predykcji i ładowania](reports/size_optimization.json). Wykres wcześniejszej poprawy FPR jest historyczny i pokazuje rozmiar sprzed kompresji.
+1. Z bazowych 60 tys. cech znakowych i 30 tys. słownych zachowano **10 tys. znakowych i 5 tys. słownych** według bezwzględnych wag SVM wyuczonych na train.
+2. Ponownie nauczono SVM na train po zmianie normalizacji TF-IDF. IDF i słowniki nie korzystają z walidacji ani testu.
+3. 99,9% wag zaokrąglono do wspólnej siatki **6-bitowej**; 15 największych wag zachowano dokładnie. Podczas predykcji wagi nadal są float32, bez dodatkowego dekodera lub własnych klas modeli.
+4. Słowniki zapisano jako uporządkowane sekwencje, bez redundantnych indeksów, i zastosowano LZMA (6). Plik działa z joblib oraz standardowym scikit-learn.
+
+Porównano 20 wariantów. Limity walidacyjne ustalono przed wyborem: spadek czułości ≤0,5 p.p., wzrost FPR ≤0,3 p.p. Wybrano najmniejszy dopuszczalny wariant; następnie na walidacji ustawiono próg z zachowaniem pierwotnego minimum czułości **92,8%**. Finalna walidacja: czułość 92,80%, FPR 3,06%. Test wykonano po zamrożeniu konfiguracji.
+
+To ten sam, wcześniej używany losowy test. Wyniki nie zastępują niezależnej walidacji czasowej lub na nowych kampaniach.
+
+[Raport końcowy](reports/test_metrics.json) · [Porównanie kompresji](reports/compression_comparison.json) · [20 wariantów walidacyjnych](reports/compression_candidates.json).
+
+Historyczne etapy: model 1,525 MiB → 0,681 MiB (sam zapis float32), następnie obecne 0,073 MiB (selekcja cech i kwantyzacja). Raporty `optimization.*` i `size_optimization.json` opisują wcześniejsze wersje.
+
+## Odtworzenie kompresji
+
+Domyślne `train.py` odtwarza pełną sekwencję: trening bazowy, selekcja 10k/5k, ponowny trening SVM, kwantyzacja 6-bitowa i wybór progu na walidacji. Opcje `--char-keep`, `--word-keep`, `--weight-bits` pozwalają ją zmienić. `--char-keep 0 --word-keep 0 --weight-bits 32` wyłącza redukcję cech i kwantyzację.
+
+Aby odtworzyć porównanie 20 wariantów, użyj **poprzedniego modelu 90k**, nie obecnego już skompresowanego modelu. Z katalogu repozytorium można go odzyskać przez `git show fcfec16:phishing-detector/src/models/pipeline.joblib > /tmp/reference.joblib`.
+
+Następnie z tego katalogu:
+
+```bash
+python search_compression.py --model /tmp/reference.joblib --input /sciezka/dane.json --output-dir /tmp/compression-search
+python compress_model.py --model /tmp/reference.joblib --input /sciezka/dane.json --output-dir /tmp/compressed
+```
+
+Pierwszy skrypt korzysta tylko z train/validation. Drugi stosuje zamrożony wariant 10k/5k/6-bit, dobiera próg przy minimum recall 92,8% na walidacji i dopiero wtedy ocenia test. Oba wymagają identycznego datasetu i podziału co model bazowy; sprawdzają ich sumy SHA-256. `search_compression.py` przyspiesza porównania przez wybór i ponowną normalizację kolumn macierzy bazowej; wybrany wariant jest odtwarzany z rzeczywistą transformacją TF-IDF przed końcową kalibracją. Niewielkie różnice zaokrągleń i rozmiaru pliku między etapami są oczekiwane.
+
+Pełny trening od początku odtworzył identyczne słowniki, IDF, wagi, próg i macierz pomyłek. [Potwierdzenie odtwarzalności](reports/reproducibility.json).

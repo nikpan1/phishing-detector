@@ -24,8 +24,8 @@ Własny model wskazuje się przez `--model /tmp/moj-model/models/pipeline.joblib
 ```mermaid
 flowchart LR
     A["Tekst / URL"] --> N["Normalizacja, limit 4000 znaków"]
-    N --> C["TF-IDF: znaki 3–5, 60k cech"]
-    N --> W["TF-IDF: słowa 1–2, 30k cech"]
+    N --> C["TF-IDF: znaki 3–5, 10k cech"]
+    N --> W["TF-IDF: słowa 1–2, 5k cech"]
     C --> U["Połączenie cech"]
     W --> U
     U --> S["Liniowy SVM, C=0.25"]
@@ -41,6 +41,8 @@ phishing-detector/src/
 ├── predict.py, evaluate.py, train.py   # skrypty CLI
 ├── core.py, data.py, modeling.py       # pipeline i obsługa danych
 ├── optimize.py                        # porównanie modeli na walidacji
+├── compression.py, compress_model.py  # selekcja cech, kwantyzacja, zapis
+├── search_compression.py              # wybór kompresji na walidacji
 ├── models/                            # gotowy model i metadane
 ├── notebooks/training.ipynb           # wykonany notebook rozwiązania
 ├── examples/test.jsonl                # 200 próbek do sprawdzenia pakietu
@@ -48,24 +50,38 @@ phishing-detector/src/
 └── tests/, requirements*.txt, run_notebook.py
 ```
 
-## Wyniki
+## Wyniki po kompresji
 
-Test: **15 351 próbek** (URL, SMS, e-maile, HTML).
+Porównanie na tych samych **15 351 próbkach testowych**, po wyborze wariantu wyłącznie na walidacji:
 
-| Miara | Wynik |
-| --- | --- |
-| Czułość | **92,49%** |
-| FPR | **2,96%** |
-| Precision / F1 | **95,71% / 0,941** |
-| Rozmiar modelu | **0,681 MiB** |
-| Predykcja | **1,060 ms/próbkę w batchu** |
+| Miara | Przed | Po |
+| --- | --- | --- |
+| Rozmiar modelu | 0,681 MiB | **0,073 MiB** |
+| Czułość | 92,49% | **92,63%** |
+| FPR | 2,96% | **3,14%** |
+| Precision | 95,71% | 95,47% |
+| F1 | 0,9407 | 0,9403 |
+| Fałszywe alarmy / przeoczony phishing | 265 / 480 | **281 / 471** |
+| Predykcja [ms/próbkę] | 0,892 | **0,788** |
+| Ładowanie [ms] | 127,3 | **13,5** |
 
-![Historyczne porównanie jakości przed kompresją](phishing-detector/src/reports/optimization.png)
+Model zmniejszono o **89,29% (9,33×)** względem poprzednich 0,681 MiB; ma dokładnie **76 518 bajtów**. To rozmiar pliku modelu, nie całego repozytorium ani zależności Pythona.
 
-FPR spadł z 5,09% do 2,96% (456 → 265 fałszywych alarmów). Czas obejmuje normalizację i predykcję, bez ładowania plików; rozmiar dotyczy skompresowanego modelu. To ten sam losowy test co wcześniej, nie niezależny benchmark nowych kampanii. [Pełne wyniki](phishing-detector/src/reports/test_metrics.json).
+Czułość wzrosła o 0,14 punktu procentowego, FPR wzrósł o 0,18 punktu procentowego. W całym teście oznacza to 9 mniej przeoczonych ataków i 16 dodatkowych fałszywych alarmów. Zmieniły się 193 klasyfikacje. Czas to mediana pięciu pomiarów po rozgrzewce na batchu 512 próbek; oba modele zmierzono ponownie na tym samym CPU. Pomiar predykcji nie obejmuje ładowania modelu/danych, a wyniki czasowe zależą od obciążenia.
 
-## Zmniejszenie rozmiaru
+## Jak uzyskano mniejszy model
 
-Model zmniejszono z **1,525 do 0,681 MiB** (**−55,35%**, **2,24× mniejszy**). Zachowano wszystkie 90 000 cech, IDF i próg. Zastosowano indeksy Python int, uporządkowany zapis słowników, wagi SVM float32 oraz kompresję LZMA (6), obsługiwaną bezpośrednio przez joblib. Nowy trening i wyszukiwanie również zapisują model w ten sposób, a próg nowych modeli dobierają po konwersji wag.
+1. Z bazowych 60 tys. cech znakowych i 30 tys. słownych zachowano **10 tys. znakowych i 5 tys. słownych** według bezwzględnych wag SVM wyuczonych na train.
+2. Ponownie nauczono SVM na train po zmianie normalizacji TF-IDF. IDF i słowniki nie korzystają z walidacji ani testu.
+3. 99,9% wag zaokrąglono do wspólnej siatki **6-bitowej**; 15 największych wag zachowano dokładnie. Podczas predykcji wagi nadal są float32, bez dodatkowego dekodera lub własnych klas modeli.
+4. Słowniki zapisano jako uporządkowane sekwencje, bez redundantnych indeksów, i zastosowano LZMA (6). Plik działa z joblib oraz standardowym scikit-learn.
 
-Porównanie na identycznych podziałach: **0 zmienionych klasyfikacji / 15 350 walidacyjnych i 15 351 testowych**. Czułość i FPR pozostały bez zmian. Float32 nie gwarantuje identycznych marginesów dla każdego możliwego wejścia. Obie wersje zmierzono ponownie na tym samym CPU; czasy zależą od obciążenia. [Dokładny raport rozmiaru, jakości, predykcji i ładowania](phishing-detector/src/reports/size_optimization.json). Wykres wcześniejszej poprawy FPR jest historyczny i pokazuje rozmiar sprzed kompresji.
+Porównano 20 wariantów. Limity walidacyjne ustalono przed wyborem: spadek czułości ≤0,5 p.p., wzrost FPR ≤0,3 p.p. Wybrano najmniejszy dopuszczalny wariant; następnie na walidacji ustawiono próg z zachowaniem pierwotnego minimum czułości **92,8%**. Finalna walidacja: czułość 92,80%, FPR 3,06%. Test wykonano po zamrożeniu konfiguracji.
+
+To ten sam, wcześniej używany losowy test. Wyniki nie zastępują niezależnej walidacji czasowej lub na nowych kampaniach.
+
+[Raport końcowy](phishing-detector/src/reports/test_metrics.json) · [Porównanie kompresji](phishing-detector/src/reports/compression_comparison.json) · [20 wariantów walidacyjnych](phishing-detector/src/reports/compression_candidates.json).
+
+Historyczne etapy: model 1,525 MiB → 0,681 MiB (sam zapis float32), następnie obecne 0,073 MiB (selekcja cech i kwantyzacja). Raporty `optimization.*` i `size_optimization.json` opisują wcześniejsze wersje.
+
+Pełny trening od początku odtworzył identyczne słowniki, IDF, wagi, próg i macierz pomyłek. [Potwierdzenie odtwarzalności](phishing-detector/src/reports/reproducibility.json).

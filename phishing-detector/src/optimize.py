@@ -8,7 +8,8 @@ import warnings
 
 from core import HERE, metrics, score_batches, select_threshold_for_recall, write_json, input_options
 from data import load_splits, matches_split
-from modeling import DEFAULT_RECALL, MODEL_COMPRESSION, compact_pipeline, estimator, vectorizer
+from modeling import DEFAULT_RECALL, compact_pipeline, estimator, vectorizer
+from compression import dump_model
 import joblib
 from scipy.sparse import hstack
 from sklearn.exceptions import ConvergenceWarning
@@ -33,7 +34,7 @@ def search(data_dir=None, output_dir=HERE / 'experiments' / 'optimization',
         row = dict(name=name, parameters=config, fit_s=fit_s,
                    reused_pretrained_baseline=reused, threshold=bundle['threshold'],
                    **metrics(validation.label, scores, bundle['threshold']))
-        joblib.dump(bundle, output_dir / f'{name}.joblib', compress=MODEL_COMPRESSION)
+        dump_model(bundle, output_dir / f'{name}.joblib')
         row['model_bytes'] = (output_dir / f'{name}.joblib').stat().st_size
         rows.append(row)
         write_json(output_dir / 'validation_candidates.json', {

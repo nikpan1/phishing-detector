@@ -6,9 +6,15 @@
     "max_features": 60000,
     "word_features": 30000,
     "svm_c": 0.25,
-    "classifier": "svm"
+    "classifier": "svm",
+    "compression": {
+      "char_keep": 10000,
+      "word_keep": 5000,
+      "weight_bits": 6,
+      "feature_selection": "top absolute training weights per branch; refit on train"
+    }
   },
-  "threshold": 0.09610856078458119,
+  "threshold": 0.10188931226730347,
   "threshold_policy": {
     "objective": "minimum validation FPR at recall floor",
     "min_validation_recall": 0.928,
@@ -48,34 +54,50 @@
     "samples": 15350,
     "phishing_samples": 6389,
     "benign_samples": 8961,
-    "accuracy": 0.953615635179153,
-    "precision": 0.9584881279276369,
-    "recall": 0.9287838472374393,
-    "f1": 0.943402225755167,
-    "fpr": 0.028679834839861622,
-    "roc_auc": 0.9889380302592603,
-    "average_precision": 0.9846095011932535,
+    "accuracy": 0.9521824104234528,
+    "precision": 0.9558278252458488,
+    "recall": 0.9280012521521365,
+    "f1": 0.9417090216010165,
+    "fpr": 0.030576944537440018,
+    "roc_auc": 0.9883427741670925,
+    "average_precision": 0.9841052252934029,
     "intervals_95": {
       "recall": [
-        0.9222164708664568,
-        0.934835911128752
+        0.9214025175448386,
+        0.9340856148026329
       ],
       "fpr": [
-        0.025420912832458366,
-        0.03234268077924786
+        0.02720848072290163,
+        0.03434770645068478
       ]
     },
     "confusion_matrix": {
-      "tn": 8704,
-      "fp": 257,
-      "fn": 455,
-      "tp": 5934
+      "tn": 8687,
+      "fp": 274,
+      "fn": 460,
+      "tp": 5929
     }
   },
-  "features": 90000,
-  "fit_seconds": 122.41962265000029,
-  "model_bytes": 714158,
-  "model_sha256": "88b9d6cba3b5631fc699f19f4aa978fa6c61270bc09ff75ae57fcafc8a52ee62",
+  "features": 15000,
+  "fit_seconds": 39.89357211200013,
+  "storage": {
+    "compression": [
+      "lzma",
+      6
+    ],
+    "weights_dtype": "float32",
+    "vocabulary": "ordered tuple, indices reconstructed at load",
+    "quantization": {
+      "bits": 6,
+      "scale": 0.037104930728673935,
+      "outlier_quantile": 0.999,
+      "outliers_preserved": 15,
+      "runtime_dtype": "float32"
+    },
+    "compacted_from_sha256": "88b9d6cba3b5631fc699f19f4aa978fa6c61270bc09ff75ae57fcafc8a52ee62"
+  },
+  "model_bytes": 76518,
+  "model_sha256": "edef128e7ddee4bad5682e47a14e751d06bd156d10f8cddce1098a4a0075b02d",
   "versions": {
     "python": "3.12.14",
     "numpy": "2.3.5",
@@ -84,13 +106,5 @@
     "scikit-learn": "1.8.0",
     "joblib": "1.5.3"
   },
-  "storage": {
-    "compression": [
-      "lzma",
-      6
-    ],
-    "weights_dtype": "float32",
-    "vocabulary_indices": "python int, sorted by term",
-    "compacted_from_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82"
-  }
+  "fit_seconds_scope": "compression refit; reference training excluded"
 }

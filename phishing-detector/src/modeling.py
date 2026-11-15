@@ -13,6 +13,23 @@ DEFAULT_RECALL = .928
 MODEL_COMPRESSION = ('lzma', 6)
 
 
+def feature_transformers(pipeline):
+    return (pipeline['features'].transformer_list if 'features' in pipeline.named_steps
+            else [('tfidf', pipeline['tfidf'])])
+
+
+def restore_vocabularies(pipeline):
+    """Materialize the standard sklearn ordered-vocabulary representation."""
+    for _, transformer in feature_transformers(pipeline):
+        if not hasattr(transformer, 'vocabulary_'):
+            transformer.vocabulary_ = {term: index for index, term
+                                       in enumerate(transformer.vocabulary)}
+            transformer.fixed_vocabulary_ = True
+        # Avoid keeping a second copy after loading a packed artifact.
+        transformer.vocabulary = None
+    return pipeline
+
+
 def compact_pipeline(pipeline):
     """Keep all features; use native vocabulary indices and float32 weights.
 
@@ -20,11 +37,8 @@ def compact_pipeline(pipeline):
     validation/threshold selection: float32 introduces small rounding errors.
     The artifact still contains only standard sklearn/numpy objects.
     """
-    pipeline = deepcopy(pipeline)
-    transformers = (pipeline['features'].transformer_list
-                    if 'features' in pipeline.named_steps
-                    else [('tfidf', pipeline['tfidf'])])
-    for _, transformer in transformers:
+    pipeline = restore_vocabularies(deepcopy(pipeline))
+    for _, transformer in feature_transformers(pipeline):
         transformer.vocabulary_ = {term: int(index) for term, index
                                    in sorted(transformer.vocabulary_.items())}
     classifier = pipeline.steps[-1][1]
@@ -67,10 +81,9 @@ def build_pipeline(architecture=DEFAULT_CONFIG['architecture'], max_features=DEF
 
 
 def feature_count(pipeline):
-    if 'features' in pipeline.named_steps:
-        return sum(len(transformer.vocabulary_)
-                   for _, transformer in pipeline['features'].transformer_list)
-    return len(pipeline['tfidf'].vocabulary_)
+    return sum(len(transformer.vocabulary_) if hasattr(transformer, 'vocabulary_')
+               else len(transformer.vocabulary)
+               for _, transformer in feature_transformers(pipeline))
 
 
 def architecture_name(config):

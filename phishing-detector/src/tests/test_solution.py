@@ -22,6 +22,7 @@ from core import (DEFAULT_MODEL, load_model, metrics, normalize, read_records,
                   score_texts, select_threshold, select_threshold_for_recall, wilson_interval)
 from modeling import MODEL_COMPRESSION, build_pipeline, compact_pipeline, feature_count
 from data import load_splits, matches_split
+from compression import dump_model, prune_pipeline, quantize_pipeline
 
 
 class PreprocessingTests(unittest.TestCase):
@@ -107,9 +108,9 @@ class DeliveredArtifactTests(unittest.TestCase):
         single = [score_texts(self.bundle, [text])[0] for text in texts]
         np.testing.assert_allclose(batched, single, atol=1e-6)
 
-    def test_compact_artifact_stays_below_half_original_size(self):
-        self.assertLess(DEFAULT_MODEL.stat().st_size, 1599414 / 2)
-        self.assertEqual(feature_count(self.bundle['pipeline']), 90000)
+    def test_compact_artifact_stays_below_quarter_previous_size(self):
+        self.assertLess(DEFAULT_MODEL.stat().st_size, 714158 / 4)
+        self.assertEqual(feature_count(self.bundle['pipeline']), 15000)
 
     def test_sample_report_matches_shipped_model(self):
         scores = score_texts(self.bundle, [r['text'] for r in self.examples])
@@ -186,6 +187,82 @@ class TrainingRecipeTests(unittest.TestCase):
                                            rtol=1e-5, atol=3e-6)
                 np.testing.assert_array_equal(original_scores >= bundle['threshold'],
                                               score_texts(restored, texts) >= restored['threshold'])
+
+
+class CompressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.texts = ['meeting agenda tomorrow', 'team meeting schedule',
+                     'meeting notes and agenda', 'team schedule tomorrow',
+                     'urgent verify your account', 'confirm account password',
+                     'verify password immediately', 'urgent account confirmation']
+        cls.pipeline = build_pipeline(max_features=500, word_features=100)
+        cls.pipeline.fit(cls.texts, [0, 0, 0, 0, 1, 1, 1, 1])
+
+    def test_pruned_features_match_renormalized_original_columns(self):
+        from scipy.sparse import hstack
+        from sklearn.preprocessing import normalize as normalize_matrix
+        for text in [self.texts, ['unknownwords', '']]:
+            pruned = prune_pipeline(self.pipeline, char_keep=15, word_keep=5)
+            expected = []
+            for (_, original), (_, reduced) in zip(
+                    self.pipeline['features'].transformer_list,
+                    pruned['features'].transformer_list):
+                terms = sorted(reduced.vocabulary_, key=reduced.vocabulary_.get)
+                columns = [original.vocabulary_[term] for term in terms]
+                expected.append(normalize_matrix(original.transform(text)[:, columns]))
+            actual = pruned['features'].transform(text)
+            np.testing.assert_allclose(actual.toarray(), hstack(expected).toarray(), atol=1e-6)
+            self.assertEqual(pruned['svm'].n_features_in_, 20)
+            self.assertGreater(feature_count(self.pipeline), 20)
+
+    def test_packed_artifact_works_with_plain_joblib_and_standard_loader(self):
+        pipeline, _ = quantize_pipeline(self.pipeline, 8)
+        bundle = dict(format_version=1, pipeline=pipeline, max_chars=4000, threshold=.1)
+        original_scores = score_texts(bundle, self.texts)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'packed.joblib'
+            dump_model(bundle, path)
+            for loaded in [joblib.load(path), load_model(path)]:
+                self.assertEqual(feature_count(loaded['pipeline']), feature_count(pipeline))
+                np.testing.assert_array_equal(score_texts(loaded, self.texts), original_scores)
+            self.assertTrue(hasattr(pipeline['features'].transformer_list[0][1], 'vocabulary_'))
+
+    def test_quantization_preserves_outliers_and_bounds_rounding(self):
+        original = self.pipeline['svm'].coef_.astype(np.float32)
+        for bits in [6, 8, 10, 32]:
+            pipeline, info = quantize_pipeline(self.pipeline, bits)
+            actual = pipeline['svm'].coef_
+            if bits == 32:
+                np.testing.assert_array_equal(actual, original)
+            else:
+                limit = info['scale'] * (2**(bits - 1) - 1)
+                outliers = np.abs(original) > limit
+                np.testing.assert_array_equal(actual[outliers], original[outliers])
+                self.assertLessEqual(float(np.max(np.abs(actual - original))),
+                                     info['scale'] / 2 + 1e-6)
+        with self.assertRaises(ValueError):
+            quantize_pipeline(self.pipeline, 3)
+        with self.assertRaises(ValueError):
+            prune_pipeline(self.pipeline, -1, 0)
+
+    def test_compression_search_does_not_access_test_split(self):
+        import search_compression
+        train = pd.DataFrame({'text': self.texts, 'label': [0, 0, 0, 0, 1, 1, 1, 1]})
+        info = {'seed': 42, 'limit': 0}
+        bundle = dict(pipeline=self.pipeline, threshold=0., max_chars=4000, split_info=info)
+        with tempfile.TemporaryDirectory() as directory, redirect_stdout(io.StringIO()), \
+                patch.object(search_compression, 'load_model', return_value=bundle), \
+                patch.object(search_compression, 'matches_split', return_value=True), \
+                patch.object(search_compression, 'load_splits',
+                             return_value=(train, train.copy(), object(), info)):
+            result = search_compression.search('unused', 'unused', directory,
+                                               budgets=[(15, 5)], bits_options=[8, 32])
+            report = json.loads((Path(directory) / 'candidates.json').read_text())
+            self.assertFalse(report['test_used'])
+            self.assertEqual(len(report['rows']), 2)
+            eligible = [row for row in report['rows'] if row['eligible']]
+            self.assertEqual(result['model_bytes'], min(row['model_bytes'] for row in eligible))
 
 
 class ExternalDataTests(unittest.TestCase):

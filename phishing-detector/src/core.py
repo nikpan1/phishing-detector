@@ -14,6 +14,7 @@ for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
 
 import joblib
 import numpy as np
+from modeling import restore_vocabularies
 from sklearn.metrics import (accuracy_score, average_precision_score, confusion_matrix,
                              f1_score, precision_score, recall_score, roc_auc_score, roc_curve)
 
@@ -102,6 +103,7 @@ def load_model(path=DEFAULT_MODEL):
         raise ValueError('nieprawidłowe parametry modelu')
     if list(bundle['pipeline'].classes_) != [0, 1]:
         raise ValueError('model musi mieć klasy 0 i 1')
+    restore_vocabularies(bundle['pipeline'])
     return bundle
 
 

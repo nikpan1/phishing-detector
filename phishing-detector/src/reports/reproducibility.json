@@ -1,21 +1,32 @@
 {
-  "command": "python src/train.py --output-dir src/experiments/reproduced",
+  "command": "python train.py --input /path/to/original-dataset.json --output-dir /tmp/reproduced",
   "configuration": {
     "architecture": "hybrid",
     "max_features": 60000,
     "word_features": 30000,
     "svm_c": 0.25,
-    "classifier": "svm"
+    "classifier": "svm",
+    "compression": {
+      "char_keep": 10000,
+      "word_keep": 5000,
+      "weight_bits": 6,
+      "feature_selection": "top absolute training weights per branch; refit on train"
+    }
   },
-  "split_info_equal": true,
+  "split_info_equivalent": true,
+  "max_absolute_coefficient_difference": 0.0,
+  "max_absolute_intercept_difference": 0.0,
+  "absolute_threshold_difference": 0.0,
+  "vocabularies_equal": true,
+  "idf_equal": true,
   "test_confusion_matrix_equal": true,
   "test_confusion_matrix": {
-    "tn": 8696,
-    "fp": 265,
-    "fn": 480,
-    "tp": 5910
+    "tn": 8680,
+    "fp": 281,
+    "fn": 471,
+    "tp": 5919
   },
-  "max_absolute_coefficient_difference": 0.0,
-  "absolute_threshold_difference": 0.0,
-  "note": "Historical full retraining check of the float64 artifact before storage compaction. Current artifact verification: size_optimization.json. New training compacts weights before selecting the validation threshold; it may differ slightly from the preserved historical threshold."
+  "delivered_model_sha256": "edef128e7ddee4bad5682e47a14e751d06bd156d10f8cddce1098a4a0075b02d",
+  "retrained_model_sha256": "535799de97196769a1fd762ca583aeabae62490490c3df215c8d96bb0dccb1c6",
+  "note": "Full independent retraining of the base model, feature pruning/refit, quantization and validation threshold selection. Identical numeric model and predictions; artifact bytes differ because CLI adds explicit default input-schema metadata."
 }
