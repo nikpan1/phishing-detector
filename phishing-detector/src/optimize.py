@@ -8,7 +8,7 @@ import warnings
 
 from core import HERE, metrics, score_batches, select_threshold_for_recall, write_json, input_options
 from data import load_splits, matches_split
-from modeling import DEFAULT_RECALL, estimator, vectorizer
+from modeling import DEFAULT_RECALL, MODEL_COMPRESSION, compact_pipeline, estimator, vectorizer
 import joblib
 from scipy.sparse import hstack
 from sklearn.exceptions import ConvergenceWarning
@@ -26,14 +26,14 @@ def search(data_dir=None, output_dir=HERE / 'experiments' / 'optimization',
     rows = []
 
     def record(name, pipeline, fit_s, config, reused=False):
-        bundle = dict(format_version=1, pipeline=pipeline, threshold=0., max_chars=4000,
+        bundle = dict(format_version=1, pipeline=compact_pipeline(pipeline), threshold=0., max_chars=4000,
                       labels={0:'benign', 1:'phishing'}, split_info=split_info, configuration=config)
         scores = score_batches(bundle, validation.text.tolist())
         bundle['threshold'] = select_threshold_for_recall(validation.label, scores, min_recall)
         row = dict(name=name, parameters=config, fit_s=fit_s,
                    reused_pretrained_baseline=reused, threshold=bundle['threshold'],
                    **metrics(validation.label, scores, bundle['threshold']))
-        joblib.dump(bundle, output_dir / f'{name}.joblib', compress=3)
+        joblib.dump(bundle, output_dir / f'{name}.joblib', compress=MODEL_COMPRESSION)
         row['model_bytes'] = (output_dir / f'{name}.joblib').stat().st_size
         rows.append(row)
         write_json(output_dir / 'validation_candidates.json', {

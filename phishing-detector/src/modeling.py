@@ -1,4 +1,6 @@
 """Portable sklearn pipelines; no custom objects are needed in model artifacts."""
+from copy import deepcopy
+
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -8,6 +10,27 @@ from sklearn.svm import LinearSVC
 DEFAULT_CONFIG = dict(architecture='hybrid', max_features=60000, word_features=30000,
                       svm_c=.25, classifier='svm')
 DEFAULT_RECALL = .928
+MODEL_COMPRESSION = ('lzma', 6)
+
+
+def compact_pipeline(pipeline):
+    """Keep all features; use native vocabulary indices and float32 weights.
+
+    Return a copy so callers can compare against the original. Compact before
+    validation/threshold selection: float32 introduces small rounding errors.
+    The artifact still contains only standard sklearn/numpy objects.
+    """
+    pipeline = deepcopy(pipeline)
+    transformers = (pipeline['features'].transformer_list
+                    if 'features' in pipeline.named_steps
+                    else [('tfidf', pipeline['tfidf'])])
+    for _, transformer in transformers:
+        transformer.vocabulary_ = {term: int(index) for term, index
+                                   in sorted(transformer.vocabulary_.items())}
+    classifier = pipeline.steps[-1][1]
+    classifier.coef_ = classifier.coef_.astype(np.float32)
+    classifier.intercept_ = classifier.intercept_.astype(np.float32)
+    return pipeline
 
 
 def vectorizer(analyzer, max_features):

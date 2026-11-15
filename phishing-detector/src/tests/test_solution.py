@@ -20,7 +20,7 @@ SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC))
 from core import (DEFAULT_MODEL, load_model, metrics, normalize, read_records,
                   score_texts, select_threshold, select_threshold_for_recall, wilson_interval)
-from modeling import build_pipeline, feature_count
+from modeling import MODEL_COMPRESSION, build_pipeline, compact_pipeline, feature_count
 from data import load_splits, matches_split
 
 
@@ -107,6 +107,10 @@ class DeliveredArtifactTests(unittest.TestCase):
         single = [score_texts(self.bundle, [text])[0] for text in texts]
         np.testing.assert_allclose(batched, single, atol=1e-6)
 
+    def test_compact_artifact_stays_below_half_original_size(self):
+        self.assertLess(DEFAULT_MODEL.stat().st_size, 1599414 / 2)
+        self.assertEqual(feature_count(self.bundle['pipeline']), 90000)
+
     def test_sample_report_matches_shipped_model(self):
         scores = score_texts(self.bundle, [r['text'] for r in self.examples])
         actual = metrics([r['label'] for r in self.examples], scores, self.bundle['threshold'])
@@ -171,9 +175,17 @@ class TrainingRecipeTests(unittest.TestCase):
                 self.assertGreater(feature_count(pipeline), 0)
                 bundle = dict(format_version=1, pipeline=pipeline, threshold=.1, max_chars=4000)
                 path = Path(directory) / 'model.joblib'
-                joblib.dump(bundle, path)
+                original_scores = score_texts(bundle, texts)
+                original_dtype = pipeline['svm'].coef_.dtype
+                compact = {**bundle, 'pipeline': compact_pipeline(pipeline)}
+                self.assertEqual(pipeline['svm'].coef_.dtype, original_dtype)
+                self.assertEqual(compact['pipeline']['svm'].coef_.dtype, np.float32)
+                joblib.dump(compact, path, compress=MODEL_COMPRESSION)
                 restored = load_model(path)
-                np.testing.assert_allclose(score_texts(bundle, texts), score_texts(restored, texts))
+                np.testing.assert_allclose(original_scores, score_texts(restored, texts),
+                                           rtol=1e-5, atol=3e-6)
+                np.testing.assert_array_equal(original_scores >= bundle['threshold'],
+                                              score_texts(restored, texts) >= restored['threshold'])
 
 
 class ExternalDataTests(unittest.TestCase):

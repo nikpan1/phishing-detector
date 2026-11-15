@@ -63,8 +63,14 @@ core.py, data.py, modeling.py, tests/, requirements*.txt, run_notebook.py
 
 ## Wyniki
 
-Na **15 351 próbkach testowych**: czułość **92,49%**, FPR **2,96%**, precision **95,71%**, F1 **0,941**. Model: **1,525 MiB**; predykcja: **1,273 ms/próbkę w batchu** (mediana 5 powtórzeń, 512 próbek, CPU, bez ładowania modelu i danych).
+Na **15 351 próbkach testowych**: czułość **92,49%**, FPR **2,96%**, precision **95,71%**, F1 **0,941**. Model: **0,681 MiB**; predykcja: **1,060 ms/próbkę w batchu** (mediana 5 powtórzeń, 512 próbek, CPU, bez ładowania modelu i danych).
 
-![Wyniki filtra przed i po usprawnieniu](reports/optimization.png)
+![Historyczne wyniki jakości przed kompresją](reports/optimization.png)
 
 [Raport testu](reports/test_metrics.json) · [Porównanie modeli](reports/optimization.md). Test był już używany wcześniej; wynik nie dowodzi odporności na nowe kampanie. Same URL nadal mają FPR około 10,2%. Dołączone 200 rekordów to podzbiór testu, nie nowa walidacja.
+
+## Zmniejszenie rozmiaru
+
+Model zmniejszono z **1,525 do 0,681 MiB** (**−55,35%**, **2,24× mniejszy**). Zachowano wszystkie 90 000 cech, IDF i próg. Zastosowano indeksy Python int, uporządkowany zapis słowników, wagi SVM float32 oraz kompresję LZMA (6), obsługiwaną bezpośrednio przez joblib. Nowy trening i wyszukiwanie również zapisują model w ten sposób, a próg nowych modeli dobierają po konwersji wag.
+
+Porównanie na identycznych podziałach: **0 zmienionych klasyfikacji / 15 350 walidacyjnych i 15 351 testowych**. Czułość i FPR pozostały bez zmian. Float32 nie gwarantuje identycznych marginesów dla każdego możliwego wejścia. Obie wersje zmierzono ponownie na tym samym CPU; czasy zależą od obciążenia. [Dokładny raport rozmiaru, jakości, predykcji i ładowania](reports/size_optimization.json). Wykres wcześniejszej poprawy FPR jest historyczny i pokazuje rozmiar sprzed kompresji.

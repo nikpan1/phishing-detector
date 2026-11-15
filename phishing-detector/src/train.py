@@ -17,7 +17,8 @@ import pandas as pd
 import scipy
 import sklearn
 from sklearn.exceptions import ConvergenceWarning
-from modeling import DEFAULT_CONFIG, DEFAULT_RECALL, architecture_name, build_pipeline, feature_count
+from modeling import (DEFAULT_CONFIG, DEFAULT_RECALL, MODEL_COMPRESSION, architecture_name,
+                      build_pipeline, compact_pipeline, feature_count)
 from sklearn.model_selection import train_test_split
 
 
@@ -28,6 +29,7 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
         raise ValueError('wybierz max_fpr albo min_recall')
     if max_fpr is None and min_recall is None:
         min_recall = DEFAULT_RECALL
+    pipeline = compact_pipeline(pipeline)
     bundle = {'format_version': 1, 'pipeline': pipeline, 'max_chars': max_chars,
               'threshold': 0., 'labels': {0: 'benign', 1: 'phishing'},
               'split_info': split_info, 'configuration': config}
@@ -49,7 +51,7 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
         raise RuntimeError('próg nie spełnia budżetu FPR walidacji')
     model_path = output_dir / 'models' / 'pipeline.joblib'
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, model_path, compress=3)
+    joblib.dump(bundle, model_path, compress=MODEL_COMPRESSION)
     # Evaluate the serialized artifact, not just the in-memory estimator.
     bundle = joblib.load(model_path)
     print(f'4/5 Ocena odłożonego testu: {len(test)} rekordów', file=sys.stderr, flush=True)
@@ -60,6 +62,8 @@ def export_solution(pipeline, validation, test, split_info, output_dir, config,
                     threshold=bundle['threshold'], threshold_policy=policy,
                     split_info=split_info, validation=validation_metrics,
                     features=feature_count(pipeline), fit_seconds=fit_seconds,
+                    storage={'compression': list(MODEL_COMPRESSION), 'weights_dtype': 'float32',
+                             'vocabulary_indices': 'python int, sorted by term'},
                     model_bytes=model_path.stat().st_size,
                     model_sha256=hashlib.sha256(model_path.read_bytes()).hexdigest(),
                     versions={'python':platform.python_version(), 'numpy':np.__version__,

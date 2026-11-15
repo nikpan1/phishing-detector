@@ -17,5 +17,5 @@
   },
   "max_absolute_coefficient_difference": 0.0,
   "absolute_threshold_difference": 0.0,
-  "note": "independent full retraining using shipped training script, same dataset and seed; timing may differ"
+  "note": "Historical full retraining check of the float64 artifact before storage compaction. Current artifact verification: size_optimization.json. New training compacts weights before selecting the validation threshold; it may differ slightly from the preserved historical threshold."
 }

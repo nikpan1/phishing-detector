@@ -7,8 +7,8 @@
   "recall": 0.9248826291079812,
   "f1": 0.940708316752885,
   "fpr": 0.029572592344604395,
-  "roc_auc": 0.9888646663799084,
-  "average_precision": 0.9843212104487113,
+  "roc_auc": 0.9888647013078234,
+  "average_precision": 0.9843212425732012,
   "intervals_95": {
     "recall": [
       0.9181615997847903,
@@ -26,15 +26,16 @@
     "tp": 5910
   },
   "threshold": 0.09610856078458119,
-  "model_bytes": 1599414,
-  "model_mib": 1.525320053100586,
-  "model_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82",
+  "model_bytes": 714158,
+  "model_mib": 0.6810741424560547,
+  "model_sha256": "88b9d6cba3b5631fc699f19f4aa978fa6c61270bc09ff75ae57fcafc8a52ee62",
   "timing": {
     "batch_samples": 512,
     "repeats": 5,
-    "median_ms_per_sample": 1.2727660390625672,
+    "median_ms_per_sample": 1.0596741113281238,
     "includes": "normalization + TF-IDF + SVM; excludes file/model loading",
     "kind": "batch throughput, not single-request latency"
   },
-  "scope": "same held-out test as baseline; not used in this optimization selection; not a new blind test"
+  "load_median_ms": 146.5175449999947,
+  "scope": "same held-out test, re-evaluated after storage compaction; no retraining or threshold tuning"
 }

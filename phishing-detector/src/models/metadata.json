@@ -54,7 +54,7 @@
     "f1": 0.943402225755167,
     "fpr": 0.028679834839861622,
     "roc_auc": 0.9889380302592603,
-    "average_precision": 0.984609500917608,
+    "average_precision": 0.9846095011932535,
     "intervals_95": {
       "recall": [
         0.9222164708664568,
@@ -74,8 +74,8 @@
   },
   "features": 90000,
   "fit_seconds": 122.41962265000029,
-  "model_bytes": 1599414,
-  "model_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82",
+  "model_bytes": 714158,
+  "model_sha256": "88b9d6cba3b5631fc699f19f4aa978fa6c61270bc09ff75ae57fcafc8a52ee62",
   "versions": {
     "python": "3.12.14",
     "numpy": "2.3.5",
@@ -83,5 +83,14 @@
     "scipy": "1.17.0",
     "scikit-learn": "1.8.0",
     "joblib": "1.5.3"
+  },
+  "storage": {
+    "compression": [
+      "lzma",
+      6
+    ],
+    "weights_dtype": "float32",
+    "vocabulary_indices": "python int, sorted by term",
+    "compacted_from_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82"
   }
 }

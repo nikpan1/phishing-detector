@@ -1,5 +1,7 @@
 # Usprawnienie FPR i jakości
 
+**Raport historyczny sprzed kompresji.** Aktualny model ma 0,681 MiB przy niezmienionych klasyfikacjach testowych. Nowe pomiary: [size_optimization.json](size_optimization.json).
+
 Zmieniono reprezentację i regularyzację, zamiast obniżać FPR wyłącznie kosztem czułości.
 Wszystkie cechy i klasyfikatory dopasowano tylko na train. **Przed eksperymentem**
 ustalono minimum czułości walidacyjnej 92,8% i kryterium wyboru: najniższy FPR,

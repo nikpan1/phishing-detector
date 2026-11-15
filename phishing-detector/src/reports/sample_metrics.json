@@ -26,13 +26,13 @@
     "tp": 73
   },
   "threshold": 0.09610856078458119,
-  "model_bytes": 1599414,
-  "model_mib": 1.525320053100586,
-  "model_sha256": "d401a2dcb6e69c60702cfd93d68263caa8257cf6fdc23461bd7059b458c9ec82",
+  "model_bytes": 714158,
+  "model_mib": 0.6810741424560547,
+  "model_sha256": "88b9d6cba3b5631fc699f19f4aa978fa6c61270bc09ff75ae57fcafc8a52ee62",
   "timing": {
     "batch_samples": 200,
     "repeats": 5,
-    "median_ms_per_sample": 1.2835935799989784,
+    "median_ms_per_sample": 0.8967358850000551,
     "includes": "normalization + TF-IDF + SVM; excludes file/model loading",
     "kind": "batch throughput, not single-request latency"
   },
